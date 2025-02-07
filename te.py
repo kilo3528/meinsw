@@ -258,17 +258,38 @@ class Minesweeper:
             return
 
         if self.board[row][col] == 'M':
-            self.buttons[row][col].config(text="💣", bg="red", fg=self.mine_color, state="disabled")
-            self.reveal_mines()
-            self.game_over = True
-            self.save_game("Програв")
-            messagebox.showinfo("Гра завершена", "Ви програли!")
-        else:
-            self.reveal_cell(row, col)
-            if self.check_win():
+            if not any('clicked' in button.keys() for row_buttons in self.buttons for button in row_buttons):
+                # Це перший клік, даємо вибір гравцю
+                choice = messagebox.askyesno("Вибір", "Ви натрапили на міну! Хочете продовжити гру?")
+                if choice:
+                    # Переміщуємо міну на інше місце
+                    self.board[row][col] = 0
+                    self.place_mines(exclude=(row, col))  # Переставляємо міну в інше місце
+                    self.update_numbers()  # Оновлюємо цифри навколо
+                    self.reveal_cell(row, col)  # Відкриваємо клітинку без міни
+                    return
+                else:
+                    # Гравець обирає програти
+                    self.reveal_mines()
+                    self.game_over = True
+                    self.save_game("Програв")
+                    messagebox.showinfo("Гра завершена", "Ви програли!")
+                    return
+            else:
+                # Гра вже триває, відкриваємо міну
+                self.buttons[row][col].config(text="💣", bg="red", fg=self.mine_color, state="disabled")
+                self.reveal_mines()
                 self.game_over = True
-                self.save_game("Виграв")
-                messagebox.showinfo("Гра завершена", "Ви виграли!")
+                self.save_game("Програв")
+                messagebox.showinfo("Гра завершена", "Ви програли!")
+                return
+
+        self.reveal_cell(row, col)
+        if self.check_win():
+            self.game_over = True
+            self.save_game("Виграв")
+            messagebox.showinfo("Гра завершена", "Ви виграли!")
+
 
     def reveal_cell(self, row, col):
         """Відкриває клітинку і показує число мін поруч."""
