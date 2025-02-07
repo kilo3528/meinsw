@@ -6,9 +6,8 @@ import sqlite3
 from datetime import datetime
 import os
 import locale
+
 locale.setlocale(locale.LC_ALL, 'uk_UA.UTF-8')
-
-
 
 # Визначення шляху до папки та файлу
 folder = r"C:\Users\3349k\Desktop\game"  # Використовуємо raw string (r), щоб уникнути помилок з лапками
@@ -40,7 +39,7 @@ class Minesweeper:
         self.flag_color = "#0000ff"
 
         # Налаштування бази даних
-        self.db_path = r"C:\Users\3349k\Desktop\game\game_data.db"
+        self.db_path = db_path
         self.conn = sqlite3.connect(self.db_path)
         self.create_db()
 
@@ -83,6 +82,18 @@ class Minesweeper:
             self.menu_frame.configure(bg=self.bg_color)
         if hasattr(self, 'game_frame'):
             self.game_frame.configure(bg=self.bg_color)
+
+        # Update colors for all open windows
+        for window in self.root.winfo_children():
+            if isinstance(window, tk.Toplevel):
+                window.configure(bg=self.bg_color)
+                for widget in window.winfo_children():
+                    if isinstance(widget, tk.Listbox):
+                        widget.configure(bg=self.button_bg_color, fg=self.text_color)
+                    elif isinstance(widget, tk.Text):
+                        widget.configure(bg=self.button_bg_color, fg=self.text_color)
+                    elif isinstance(widget, tk.Frame):
+                        widget.configure(bg=self.bg_color)
 
         self.update_button_styles()
 
@@ -374,14 +385,15 @@ class Minesweeper:
             info_window.title("Про гру")
             info_window.geometry("500x450")
             info_window.resizable(False, False)
+            info_window.configure(bg=self.bg_color)
             
             # Створюємо фрейм для прокрутки
-            frame = tk.Frame(info_window)
+            frame = tk.Frame(info_window, bg=self.bg_color)
             frame.pack(fill='both', expand=True)
             
 
             # Додаємо текстове поле
-            self.info_text = tk.Text(frame, wrap='word', height=20, width=50)
+            self.info_text = tk.Text(frame, wrap='word', height=20, width=50, bg=self.button_bg_color, fg=self.text_color)
             self.info_text.pack(side=tk.LEFT, fill='both', expand=True)
             
             # Додаємо смугу прокрутки
