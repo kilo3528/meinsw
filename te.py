@@ -1,13 +1,14 @@
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
+from tkinter import Toplevel, Label, Button
 import random
 import sqlite3
 from datetime import datetime
 import os
+os.environ['LANG'] = 'uk_UA.UTF-8'
 import locale
-
-locale.setlocale(locale.LC_ALL, 'uk_UA.UTF-8')
+locale.setlocale(locale.LC_ALL, 'uk_UA')
 
 # Визначення шляху до папки та файлу
 folder = r"C:\Users\3349k\Desktop\game"  # Використовуємо raw string (r), щоб уникнути помилок з лапками
@@ -266,7 +267,66 @@ class Minesweeper:
                         for c in range(max(0, col - 1), min(self.size, col + 2))
                     )
                     self.board[row][col] = mines_count
+    def custom_dialog(self):
+        """Метод класу для створення діалогового вікна з урахуванням теми, з округленими кнопками і неможливістю закрити вікно."""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Вибір")
+        dialog.geometry("340x100")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.bg_color)
 
+        label = tk.Label(dialog, text="Ви натрапили на міну! Хочете продовжити?", 
+                         font=("Arial", 12), bg=self.bg_color, fg=self.text_color)
+        label.pack(pady=10)
+
+        result = {"choice": None}
+
+        def on_yes():
+            result["choice"] = True
+            dialog.destroy()
+
+        def on_no():
+            result["choice"] = False
+            dialog.destroy()
+
+        button_frame = tk.Frame(dialog, bg=self.bg_color)
+        button_frame.pack(pady=10)
+
+        # Оновлений стиль для кнопок
+        style = ttk.Style()
+        style.configure("RoundedButton.TButton",
+                        font=("Arial", 7, "bold"),
+                        relief="flat",
+                        padding=7,
+                        width=7,
+                        anchor="center",
+                        background=self.button_bg_color,
+                        foreground=self.text_color,  # Колір тексту
+                        borderwidth=1,
+                        focusthickness=3)
+        
+        style.map("RoundedButton.TButton",
+                  background=[("active", self.button_active_bg)],
+                  foreground=[("active", self.text_color)])
+
+        # Кнопка "Так"
+        yes_button = ttk.Button(button_frame, text="Так", style="RoundedButton.TButton", command=on_yes)
+        yes_button.pack(side="left", padx=10)
+
+        # Кнопка "Ні"
+        no_button = ttk.Button(button_frame, text="Ні", style="RoundedButton.TButton", command=on_no)
+        no_button.pack(side="right", padx=10)
+
+        # Не дозволяє закрити вікно за допомогою X вікна
+        dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        # Вікно стає модальним, чекає, поки користувач не вибере
+        dialog.transient(self.root)
+        dialog.grab_set()
+        self.root.wait_window(dialog)
+
+        return result["choice"]
+    
     def left_click(self, row, col):
         """Обробляє лівий клік на клітинці."""
         if self.game_over or (row, col) in self.flagged:
@@ -274,17 +334,20 @@ class Minesweeper:
 
         if self.board[row][col] == 'M':
             if not any('clicked' in button.keys() for row_buttons in self.buttons for button in row_buttons):
-                # Це перший клік, даємо вибір гравцю
-                choice = messagebox.askyesno("Вибір", "Ви натрапили на міну! Хочете продовжити гру?",  
-                                         icon="warning", default="no")
+                # Це перший клік - запускаємо кастомне вікно
+                choice = self.custom_dialog()  # Передаємо головне вікно гри
+                if choice is None:  # Якщо діалог закрили без вибору, нічого не робимо
+                    return
+                
                 self.first_click = False  # Після першого ходу діалог більше не з'явиться
+
                 if choice:
+                    # Гравець обрав продовжити гру
                     self.buttons[row][col].config(text="💣", bg="red", fg=self.mine_color, state="disabled")
-                    # Продовжуємо гру без переміщення міни
                     self.reveal_cell(row, col)  # Відкриваємо клітинку з міною
                     return
                 else:
-                    # Гравець обирає програти
+                    # Гравець обрав програти
                     self.reveal_mines()
                     self.game_over = True
                     self.save_game("Програв")
@@ -298,13 +361,12 @@ class Minesweeper:
                 self.save_game("Програв")
                 messagebox.showinfo("Гра завершена", "Ви програли!")
                 return
-        
 
         self.reveal_cell(row, col)
 
         if self.first_click:
             self.first_click = False
-        
+
         if self.check_win():
             self.game_over = True
             self.save_game("Виграв")
