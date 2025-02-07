@@ -5,6 +5,9 @@ import random
 import sqlite3
 from datetime import datetime
 import os
+import locale
+locale.setlocale(locale.LC_ALL, 'uk_UA.UTF-8')
+
 
 
 # Визначення шляху до папки та файлу
@@ -25,6 +28,7 @@ class Minesweeper:
         self.game_over = False
         self.dark_mode = False  # Встановлюємо кольорову тему за замовчуванням
         self.flagged = set()  # Множина з флажками
+        self.first_click = True 
 
         # Налаштування кольорів за замовчуванням
         self.bg_color = "#ffffff"
@@ -231,7 +235,7 @@ class Minesweeper:
             for btn in row_buttons:
                 btn.config(state=state)
 
-    def place_mines(self):
+    def place_mines(self, exclude=None):
         """Розміщує міни на випадкових позиціях."""
         mines_placed = 0
         while mines_placed < self.mines:
@@ -260,13 +264,13 @@ class Minesweeper:
         if self.board[row][col] == 'M':
             if not any('clicked' in button.keys() for row_buttons in self.buttons for button in row_buttons):
                 # Це перший клік, даємо вибір гравцю
-                choice = messagebox.askyesno("Вибір", "Ви натрапили на міну! Хочете продовжити гру?")
+                choice = messagebox.askyesno("Вибір", "Ви натрапили на міну! Хочете продовжити гру?",  
+                                         icon="warning", default="no")
+                self.first_click = False  # Після першого ходу діалог більше не з'явиться
                 if choice:
-                    # Переміщуємо міну на інше місце
-                    self.board[row][col] = 0
-                    self.place_mines(exclude=(row, col))  # Переставляємо міну в інше місце
-                    self.update_numbers()  # Оновлюємо цифри навколо
-                    self.reveal_cell(row, col)  # Відкриваємо клітинку без міни
+                    self.buttons[row][col].config(text="💣", bg="red", fg=self.mine_color, state="disabled")
+                    # Продовжуємо гру без переміщення міни
+                    self.reveal_cell(row, col)  # Відкриваємо клітинку з міною
                     return
                 else:
                     # Гравець обирає програти
@@ -283,8 +287,13 @@ class Minesweeper:
                 self.save_game("Програв")
                 messagebox.showinfo("Гра завершена", "Ви програли!")
                 return
+        
 
         self.reveal_cell(row, col)
+
+        if self.first_click:
+            self.first_click = False
+        
         if self.check_win():
             self.game_over = True
             self.save_game("Виграв")
