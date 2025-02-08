@@ -268,7 +268,7 @@ class Minesweeper:
                     )
                     self.board[row][col] = mines_count
     def custom_dialog(self):
-        """Метод класу для створення діалогового вікна з урахуванням теми, з округленими кнопками і неможливістю закрити вікно."""
+        """Метод класу для створення діалогового вікна."""
         dialog = tk.Toplevel(self.root)
         dialog.title("Вибір")
         dialog.geometry("340x100")
@@ -413,15 +413,35 @@ class Minesweeper:
         return correct_flags and all_revealed
 
     def set_difficulty(self, value):
-        """Змінює рівень складності гри."""
+        """Змінює рівень складності гри та оновлює меню."""
+        
+        # Оновлення меню рівнів, щоб воно завжди містило всі варіанти
+        self.difficulty_menu["menu"].delete(0, "end")  # Очищення меню
+        options = ["Легкий", "Середній", "Важкий"]
+
+        for option in options:
+            self.difficulty_menu["menu"].add_command(
+                label=option, 
+                command=lambda v=option: self.set_difficulty(v)  # Викликає цю ж функцію при виборі
+            )
+        
+        self.difficulty_var.set(value)  # Встановлюємо вибраний рівень
+
+        # Оновлення налаштувань гри відповідно до вибраної складності
         difficulty_settings = {
-            "Легкий": (8, 10),
+            "Легкий": (10, 10),
             "Середній": (12, 20),
             "Важкий": (16, 40)
         }
-        self.size, self.mines = difficulty_settings.get(value, (8, 10))
-        self.update_window_size()  # Оновлюємо розмір вікна
-        self.restart_game()
+
+        if value in difficulty_settings:
+            self.size, self.mines = difficulty_settings[value]
+            self.update_window_size()  # Оновлення розміру вікна
+            
+            # Перезапуск гри з оновленням всіх елементів
+            self.restart_game()
+            self.create_board()  # Використовуємо правильний метод
+
 
     def show_history(self):
         """Показує історію ігор з бази даних."""
