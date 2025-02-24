@@ -6,17 +6,23 @@ import random
 import sqlite3
 from datetime import datetime
 import os
+import sys
 os.environ['LANG'] = 'uk_UA.UTF-8'
 import locale
 locale.setlocale(locale.LC_ALL, 'uk_UA')
 
-# Визначення шляху до папки та файлу
-folder = r"C:\Users\3349k\Desktop\game"  # Використовуємо raw string (r), щоб уникнути помилок з лапками
+# Визначення шляху до папки з грою
+if getattr(sys, 'frozen', False):
+    application_path = os.path.dirname(sys.executable)
+else:
+    application_path = os.path.dirname(os.path.abspath(__file__))
+
+folder = application_path
 filename = "game_data.db"
-# Об'єднуємо папку і файл за допомогою os.path.join
 db_path = os.path.join(folder, filename)
 
-print(db_path)
+# Створення папки якщо вона не існує
+os.makedirs(folder, exist_ok=True)
 
 class Minesweeper:
     def __init__(self, root, size=10, mines=10):
@@ -172,18 +178,31 @@ class Minesweeper:
         self.create_board()
         self.set_board_state("disabled")
 
+    def connect_db(self):
+        """Підключення до бази даних з перевіркою існування файлу"""
+        try:
+            self.conn = sqlite3.connect(self.db_path)
+            print(f"Підключено до бази даних: {self.db_path}")
+        except Exception as e:
+            messagebox.showerror("Помилка", f"Не вдалося підключитися до БД: {str(e)}")
+            sys.exit(1)
+
     def create_db(self):
-        """Створює таблицю бази даних для збереження ігор, якщо вона не існує."""
-        with self.conn:
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS games (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date TEXT,
-                    result TEXT,
-                    size INTEGER,
-                    difficulty TEXT
-                )
-            """)
+        """Створення таблиць якщо вони не існують"""
+        try:
+            with self.conn:
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS games (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        date TEXT,
+                        result TEXT,
+                        size INTEGER,
+                        difficulty TEXT
+                    )
+                """)
+            #print("Таблиці БД успішно створені/перевірені")
+        except Exception as e:
+            messagebox.showerror("Помилка", f"Помилка створення таблиць: {str(e)}")
 
     def save_game(self, result):
         """Зберігає результат гри в базу даних."""
