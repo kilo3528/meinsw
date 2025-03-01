@@ -41,6 +41,7 @@ class Minesweeper:
         self.style.theme_use('clam')
 
         self.history_window = None
+        self.info_window = None 
         
         # Завантажити налаштування
         self.load_settings()
@@ -212,16 +213,23 @@ class Minesweeper:
             }, f, indent=4)
 
     def toggle_theme(self):
-        """Перемикає тему та оновлює всі компоненти."""
+        """Перемикає тему та оновлює всі елементи."""
         self.dark_mode = not self.dark_mode
         self.init_colors()
-        self._configure_scrollbar_style()  # Важливо: спочатку оновлюємо стилі
         
-        # Примусово оновлюємо всі скролбари
+        # Оновлюємо всі елементи
+        self.update_colors()
         self._refresh_scrollbars()
         
+        # Якщо інформаційне вікно відкрите - оновлюємо його
+        if hasattr(self, 'info_text') and self.info_text.winfo_exists():
+            self.info_text.configure(
+                bg=self.bg_color,
+                fg=self.text_color,
+                insertbackground=self.text_color
+            )
+        
         self.save_settings()
-        self.update_colors()
         self.restart_game()
 
     def create_widgets(self):
@@ -644,17 +652,28 @@ class Minesweeper:
         self.save_settings()
     
     def show_info(self):
-        info_window = tk.Toplevel(self.root)
-        info_window.title("Про гру")
-        info_window.geometry("500x500")
-        info_window.resizable(False, False)
-        info_window.configure(bg=self.bg_color)
+        """Показує вікно з інформацією про гру."""
+        if self.info_window and self.info_window.winfo_exists():
+            self.info_window.lift()
+            return
 
-        # Головний контейнер для всіх елементів
-        main_frame = tk.Frame(info_window, bg=self.bg_color)
+        self.info_window = tk.Toplevel(self.root)
+        self.info_window.title("Про гру")
+        self.info_window.geometry("500x500")
+        self.info_window.resizable(False, False)
+        self.info_window.configure(bg=self.bg_color)
+
+        def on_close():
+            self.info_window.destroy()
+            self.info_window = None
+
+        self.info_window.protocol("WM_DELETE_WINDOW", on_close)
+
+        # Решта коду створення інтерфейсу залишається незмінною
+        main_frame = tk.Frame(self.info_window, bg=self.bg_color)
         main_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
-        # Чекбокс без додаткових рамок
+        # Чекбокс
         self.dialog_checkbox = ttk.Checkbutton(
             main_frame,
             text="Запит при першому кліку на міну",
@@ -664,15 +683,15 @@ class Minesweeper:
         )
         self.dialog_checkbox.pack(anchor='w', pady=(0, 10))
 
-        # Текстове поле зі скролом в тому ж контейнері
+        # Текстове поле
         self.info_text = tk.Text(
             main_frame,
             wrap='word',
             height=20,
             width=50,
-            bg=self.button_bg_color,
+            bg=self.bg_color,
             fg=self.text_color,
-            borderwidth=0  # Видаляємо рамку
+            borderwidth=0
         )
         self.info_text.pack(side='left', fill='both', expand=True)
 
@@ -685,7 +704,13 @@ class Minesweeper:
         scrollbar.pack(side='right', fill='y')
         self.info_text.config(yscrollcommand=scrollbar.set)
         
-        self.info_text.insert(tk.END, """
+        # Вставка тексту правил...
+        self._insert_info_text()
+        self.info_text.config(state=tk.DISABLED)
+
+    def _insert_info_text(self):
+        """Вставляє текст правил гри у текстове поле."""
+        rules_text = """
 Правила гри «Мінер»:
 
 Основні правила
@@ -714,9 +739,13 @@ class Minesweeper:
 
 Про програму: 
 Цю гру розробив @kilo3528.
-""")
-        
-        self.info_text.config(state=tk.DISABLED)  # Дезактивуємо редагування текстового поля
+"""
+        self.info_text.insert(tk.END, rules_text.strip())
+        self.info_text.tag_configure("header", font=("Arial", 12, "bold"))
+        self.info_text.tag_add("header", "1.0", "1.end")
+
+
+    
 
             
 
