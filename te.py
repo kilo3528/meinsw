@@ -36,6 +36,8 @@ class Minesweeper:
         self.flagged = set()
         self.first_click = True
         self.settings_file = "settings.json"
+
+        self.history_window = None
         
         # Завантажити налаштування
         self.load_settings()
@@ -511,20 +513,31 @@ class Minesweeper:
     # Оновлений метод show_history():
     def show_history(self):
         """Показує історію ігор з бази даних."""
-        history_window = tk.Toplevel(self.root)
-        history_window.title("Історія ігор")
-        history_window.geometry("400x300")
-        history_window.configure(bg=self.bg_color)
+        # Якщо вікно вже існує - перефокусувати його
+        if self.history_window and self.history_window.winfo_exists():
+            self.history_window.lift()
+            return
 
-        # Створення контейнера для списку та скролбару
-        container = tk.Frame(history_window, bg=self.bg_color)
+        # Створення нового вікна
+        self.history_window = tk.Toplevel(self.root)
+        self.history_window.title("Історія ігор")
+        self.history_window.geometry("400x300")
+        self.history_window.configure(bg=self.bg_color)
+
+        # Обробник закриття вікна
+        def on_close():
+            self.history_window.destroy()
+            self.history_window = None
+
+        self.history_window.protocol("WM_DELETE_WINDOW", on_close)
+
+        # Залишок коду створення інтерфейсу
+        container = tk.Frame(self.history_window, bg=self.bg_color)
         container.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Створення скролбару
         scrollbar = tk.Scrollbar(container)
         scrollbar.pack(side="right", fill="y")
 
-        # Створення списку з підтримкою скролу
         history_listbox = tk.Listbox(
             container,
             bg=self.button_bg_color,
@@ -533,10 +546,9 @@ class Minesweeper:
         )
         history_listbox.pack(side="left", fill="both", expand=True)
 
-        # Налаштування взаємодії скролбару
         scrollbar.config(command=history_listbox.yview)
 
-        # Заповнення списку даними
+        # Заповнення даними
         with self.conn:
             cursor = self.conn.execute("SELECT date, result, difficulty FROM games ORDER BY id DESC")
             rows = cursor.fetchall()
