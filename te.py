@@ -136,29 +136,22 @@ class Minesweeper:
         )
 
     def _refresh_scrollbars(self):
-        """Оновлює всі існуючі скролбари в додатку."""
-        # Для інформаційного вікна
-        if hasattr(self, 'info_window') and self.info_window is not None:
-            if self.info_window.winfo_exists():
-                for child in self.info_window.winfo_children():
+        """Оновлює всі існуючі скролбари безпечно."""
+        windows = [self.history_window, self.info_window]
+        for window in windows:
+            if window and window.winfo_exists():
+                for child in window.winfo_children():
                     if isinstance(child, ttk.Scrollbar):
                         child.configure(style="Vertical.TScrollbar")
-
-        # Для вікна історії
-        if self.history_window and self.history_window.winfo_exists():
-            for child in self.history_window.winfo_children():
-                if isinstance(child, ttk.Scrollbar):
-                    child.configure(style="Vertical.TScrollbar")
             
     def update_colors(self):
-        """Оновлює кольори всіх елементів."""
-        # Оновлення фону
+        """Оновлює кольори всіх основних елементів."""
+        # Головне вікно
         self.root.configure(bg=self.bg_color)
         self.menu_frame.configure(bg=self.bg_color)
         self.game_frame.configure(bg=self.bg_color)
         
-        # Оновлення стилів кнопок
-        self.style = ttk.Style()
+        # Стилізація ttk віджетів
         self.style.configure("TButton", 
                             background=self.button_bg_color,
                             foreground=self.text_color)
@@ -171,22 +164,15 @@ class Minesweeper:
                    self.history_button, self.info_button]:
             btn.configure(style="TButton")
         
-        # Оновлення тексту кнопки теми
-        theme_text = "Світла тема" if self.dark_mode else "Темна тема"
-        self.toggle_theme_button.config(text=theme_text)
-
-
-        # Налаштування стилів для чекбоксу
-        self.style = ttk.Style()
+        # Чекбокс
         self.style.configure("TCheckbutton", 
                            background=self.bg_color,
                            foreground=self.text_color,
-                           fieldbackground=self.bg_color,
-                           indicatordiameter=15,
                            indicatorbackground=self.button_bg_color)
         
-        self.style.map("TCheckbutton",
-                 indicatorbackground=[("selected", self.button_active_bg if self.dark_mode else "#4682B4")])
+        # Оновлення тексту кнопки теми
+        theme_text = "Світла тема" if self.dark_mode else "Темна тема"
+        self.toggle_theme_button.config(text=theme_text)
 
         
 
@@ -218,22 +204,22 @@ class Minesweeper:
         self.dark_mode = not self.dark_mode
         self.init_colors()
         
-        # Оновлюємо всі елементи
+        # Оновлюємо головне вікно
         self.update_colors()
+        
+        # Оновлюємо ігрове поле
+        for row in self.buttons:
+            for btn in row:
+                btn.configure(bg=self.button_bg_color, fg=self.text_color)
+
+        # Оновлюємо додаткові вікна
+        for window in [self.history_window, self.info_window]:
+            if window and window.winfo_exists():
+                window.configure(bg=self.bg_color)
+                self._update_widgets(window)  # Викликаємо рекурсивне оновлення
+
+        # Оновлюємо стилі скролбарів
         self._refresh_scrollbars()
-        
-        # Якщо інформаційне вікно відкрите - оновлюємо його
-        if hasattr(self, 'info_text') and self.info_text.winfo_exists():
-            self.info_text.configure(
-                bg=self.bg_color,
-                fg=self.text_color,
-                insertbackground=self.text_color
-            )
-        if self.history_window and self.history_window.winfo_exists():
-            for widget in self.history_window.winfo_children():
-                if isinstance(widget, tk.Listbox):
-                    widget.configure(bg=self.bg_color, fg=self.text_color)
-        
         self.save_settings()
         self.restart_game()
 
@@ -291,6 +277,28 @@ class Minesweeper:
 
         self.root.geometry(window_size)
         self.root.resizable(False, False)
+
+    def _update_widgets(self, widget):
+        """Рекурсивно оновлює кольори всіх віджетів у вікні."""
+        try:
+            # Оновлення стандартних віджетів
+            if isinstance(widget, (tk.Label, tk.Button, tk.Listbox, tk.Text)):
+                widget.configure(bg=self.bg_color, fg=self.text_color)
+            elif isinstance(widget, tk.Frame):
+                widget.configure(bg=self.bg_color)
+            
+            # Оновлення Ttk віджетів
+            if isinstance(widget, ttk.Checkbutton):
+                widget.configure(style="TCheckbutton")
+            elif isinstance(widget, ttk.Scrollbar):
+                widget.configure(style="Vertical.TScrollbar")
+            
+            # Рекурсивний обхід дочірніх віджетів
+            for child in widget.winfo_children():
+                self._update_widgets(child)
+                
+        except tk.TclError:
+            pass  # Ігноруємо віджети які не підтримують зміну кольорів
 
     def setup_initial_state(self):
         """Очищає область гри і створює нову гру."""
@@ -713,6 +721,12 @@ class Minesweeper:
         # Вставка тексту правил...
         self._insert_info_text()
         self.info_text.config(state=tk.DISABLED)
+
+        # Додамо оновлення курсора
+        self.info_text.configure(
+            insertbackground=self.text_color,
+            selectbackground=self.button_active_bg
+        )
 
     def _insert_info_text(self):
         """Вставляє текст правил гри у текстове поле."""
