@@ -481,33 +481,35 @@ class Minesweeper:
 
     def set_difficulty(self, value):
         """Змінює рівень складності гри та оновлює меню."""
-        
-        # Оновлення меню рівнів, щоб воно завжди містило всі варіанти
-        self.difficulty_menu["menu"].delete(0, "end")  # Очищення меню
-        options = ["Легкий", "Середній", "Важкий"]
-
-        for option in options:
-            self.difficulty_menu["menu"].add_command(
-                label=option, 
-                command=lambda v=option: self.set_difficulty(v)  # Викликає цю ж функцію при виборі
-            )
-        
-        self.difficulty_var.set(value)  # Встановлюємо вибраний рівень
-
-        # Оновлення налаштувань гри відповідно до вибраної складності
         difficulty_settings = {
             "Легкий": (10, 10),
             "Середній": (12, 20),
             "Важкий": (16, 40)
         }
-
+        
         if value in difficulty_settings:
+            # Оновлюємо поточний рівень складності
+            self.difficulty_var.set(value)  # ДОДАНО: оновлення змінної ПЕРЕД створенням меню
+        
+            # Оновлюємо налаштування гри
             self.size, self.mines = difficulty_settings[value]
-            self.update_window_size()  # Оновлення розміру вікна
-            
-            # Перезапуск гри з оновленням всіх елементів
+            self.update_window_size()
             self.restart_game()
-            self.create_board()  # Використовуємо правильний метод
+            
+            # Оновлюємо випадаюче меню
+            self.difficulty_menu['menu'].delete(0, 'end')
+            
+            # Додаємо тільки доступні рівні (виключаємо поточний)
+            available_difficulties = [
+                d for d in difficulty_settings.keys() 
+                if d != self.difficulty_var.get()
+            ]
+            
+            for difficulty in available_difficulties:
+                self.difficulty_menu['menu'].add_command(
+                    label=difficulty,
+                    command=lambda v=difficulty: self.set_difficulty(v)
+                )
 
 
     # Оновлений метод show_history():
@@ -522,6 +524,7 @@ class Minesweeper:
         self.history_window = tk.Toplevel(self.root)
         self.history_window.title("Історія ігор")
         self.history_window.geometry("400x300")
+        self.history_window.resizable(False, False)
         self.history_window.configure(bg=self.bg_color)
 
         # Обробник закриття вікна
