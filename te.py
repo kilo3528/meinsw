@@ -33,117 +33,135 @@ class Minesweeper:
         self.buttons = []
         self.board = []
         self.game_over = False
-        self.dark_mode = False  # Встановлюємо кольорову тему за замовчуванням
-        self.flagged = set()  # Множина з флажками
+        self.flagged = set()
         self.first_click = True
-        self.settings_file = "settings.json"  # Файл для збереження стану перемикача
-        self.dialog_enabled = self.load_settings()
+        self.settings_file = "settings.json"
+        
+        # Завантажити налаштування
+        self.load_settings()
+        
+        # Ініціалізація Tkinter змінних
         self.dialog_var = tk.BooleanVar(value=self.dialog_enabled)
-
-
-        # Налаштування кольорів за замовчуванням
-        self.bg_color = "#ffffff"
-        self.button_bg_color = "#e0e0e0"
-        self.button_active_bg = "#e0e0e0"
-        self.text_color = "#000000"
-        self.reveal_color = "#d0d0d0"
-        self.mine_color = "#000000"  # Колір для бомб - чорний
-        self.flag_color = "#0000ff"
-
-        # Налаштування бази даних
+        self.difficulty_var = tk.StringVar(value="Легкий")
+        
+        # Ініціалізація кольорів
+        self.init_colors()
+        
+        # Створення віджетів
+        self.create_widgets()
+        
+        # Оновлення кольорів
+        self.update_colors()
+        
+        # Ініціалізація бази даних
         self.db_path = db_path
         self.conn = sqlite3.connect(self.db_path)
         self.create_db()
-
-        # Створення кнопок і елементів інтерфейсу
-        self.create_widgets()
+        
+        # Початковий стан гри
         self.setup_initial_state()
-    
 
-    def update_colors(self):
-        """Оновлює кольори в залежності від теми."""
+    def init_colors(self):
+        """Ініціалізує кольорові змінні на основі теми."""
         if self.dark_mode:
             self.bg_color = "#2c2f33"
             self.button_bg_color = "#23272a"
             self.button_active_bg = "#7289da"
             self.text_color = "#ffffff"
             self.reveal_color = "#36393f"
-            self.mine_color = "#000000"  # Чорний колір для бомб в темному режимі
+            self.mine_color = "#000000"
             self.flag_color = "#f39c12"
-            theme_text = "Світла тема"
         else:
             self.bg_color = "#ffffff"
             self.button_bg_color = "#e0e0e0"
             self.button_active_bg = "#e0e0e0"
             self.text_color = "#000000"
             self.reveal_color = "#d0d0d0"
-            self.mine_color = "#000000"  # Чорний колір для бомб в світлому режимі
+            self.mine_color = "#000000"
             self.flag_color = "#0000ff"
-            theme_text = "Темна тема"
-
-        # Налаштування стилів
+            
+    def update_colors(self):
+        """Оновлює кольори всіх елементів."""
+        # Оновлення фону
+        self.root.configure(bg=self.bg_color)
+        self.menu_frame.configure(bg=self.bg_color)
+        self.game_frame.configure(bg=self.bg_color)
+        
+        # Оновлення стилів кнопок
         self.style = ttk.Style()
-        self.style.configure("TButton",
-                             background=self.button_bg_color,
-                             foreground=self.text_color)
+        self.style.configure("TButton", 
+                            background=self.button_bg_color,
+                            foreground=self.text_color)
         self.style.configure("TMenubutton",
-                             background=self.button_bg_color,
-                             foreground=self.text_color)
-
-        # Оновлення кольорів вікна
-        if hasattr(self, 'menu_frame'):
-            self.menu_frame.configure(bg=self.bg_color)
-        if hasattr(self, 'game_frame'):
-            self.game_frame.configure(bg=self.bg_color)
-
-        # Update colors for all open windows
-        for window in self.root.winfo_children():
-            if isinstance(window, tk.Toplevel):
-                window.configure(bg=self.bg_color)
-                for widget in window.winfo_children():
-                    if isinstance(widget, tk.Listbox):
-                        widget.configure(bg=self.button_bg_color, fg=self.text_color)
-                    elif isinstance(widget, tk.Text):
-                        widget.configure(bg=self.button_bg_color, fg=self.text_color)
-                    elif isinstance(widget, tk.Frame):
-                        widget.configure(bg=self.bg_color)
-
-        self.update_button_styles()
-
-        # Оновлюємо текст кнопки теми
+                            background=self.button_bg_color,
+                            foreground=self.text_color)
+        
+        # Оновлення кнопок меню
+        for btn in [self.start_button, self.toggle_theme_button, 
+                   self.history_button, self.info_button]:
+            btn.configure(style="TButton")
+        
+        # Оновлення тексту кнопки теми
+        theme_text = "Світла тема" if self.dark_mode else "Темна тема"
         self.toggle_theme_button.config(text=theme_text)
+    
+        
+    def load_settings(self):
+        """Завантажує налаштування з файлу."""
+        try:
+            with open(self.settings_file, "r") as f:
+                settings = json.load(f)
+                self.dark_mode = settings.get("dark_mode", False)
+                self.dialog_enabled = settings.get("dialog_enabled", True)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.dark_mode = False
+            self.dialog_enabled = True
+            self.save_settings()
+
+    def save_settings(self):
+        """Зберігає поточні налаштування у файл."""
+        with open(self.settings_file, "w") as f:
+            json.dump({
+                "dark_mode": self.dark_mode,
+                "dialog_enabled": self.dialog_enabled
+            }, f, indent=4)
+
+    def toggle_theme(self):
+        """Перемикає тему та зберігає налаштування."""
+        self.dark_mode = not self.dark_mode
+        self.init_colors()
+        self.save_settings()
+        self.update_colors()
+        self.clear_game_frame()
+        self.create_board()
+        self.set_board_state("disabled")
 
     def create_widgets(self):
-        """Створює всі кнопки і елементи інтерфейсу."""
-        # Налаштування вікна
-        self.root.configure(bg=self.bg_color)
+        """Створює елементи інтерфейсу."""
+        # Головне меню
         self.menu_frame = tk.Frame(self.root, bg=self.bg_color)
         self.menu_frame.pack(pady=10, anchor='w')
-
-        # Створення кнопок меню
+        
+        # Кнопки меню
         self.start_button = ttk.Button(self.menu_frame, text="Почати гру", command=self.restart_game)
         self.start_button.grid(row=0, column=0, padx=5, pady=5, sticky="w")
-
+        
         self.toggle_theme_button = ttk.Button(self.menu_frame, text="Темна тема", command=self.toggle_theme)
         self.toggle_theme_button.grid(row=0, column=1, padx=5, pady=5, sticky="w")
-
+        
         self.history_button = ttk.Button(self.menu_frame, text="Історія ігор", command=self.show_history)
         self.history_button.grid(row=0, column=2, padx=5, pady=5, sticky="w")
-
-        self.difficulty_var = tk.StringVar(value="Легкий")
+        
         self.difficulty_menu = ttk.OptionMenu(self.menu_frame, self.difficulty_var, "Легкий", "Середній", "Важкий", command=self.set_difficulty)
         self.difficulty_menu.grid(row=0, column=3, padx=5, pady=5, sticky="w")
-
+        
         self.info_button = ttk.Button(self.menu_frame, text="...", command=self.show_info)
         self.info_button.grid(row=0, column=4, padx=5, pady=5, sticky="w")
-
-        # Налаштування стилю
-        self.update_colors()
-
-        # Налаштування вікна гри
+        
+        # Ігрове поле
         self.game_frame = tk.Frame(self.root, bg=self.bg_color)
         self.game_frame.pack(pady=10)
-
+        
         self.update_window_size()
         
         
@@ -175,14 +193,6 @@ class Minesweeper:
         for btn in [self.start_button, self.toggle_theme_button, self.history_button, self.info_button]:
             btn.config(style="TButton")
         self.difficulty_menu.config(style="TMenubutton")
-
-    def toggle_theme(self):
-        """Перемикає між темним і світлим режимом."""
-        self.dark_mode = not self.dark_mode
-        self.update_colors()
-        self.clear_game_frame()
-        self.create_board()
-        self.set_board_state("disabled")
 
     def connect_db(self):
         """Підключення до бази даних з перевіркою існування файлу"""
@@ -500,17 +510,6 @@ class Minesweeper:
         for row in rows:
             history_listbox.insert(tk.END, f"Дата: {row[0]}, Результат: {row[1]}, Складність: {row[2]}")
 
-    def load_settings(self):
-        try:
-            with open(self.settings_file, "r") as file:
-                settings = json.load(file)
-                return settings.get("dialog_enabled", True)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return True
-
-    def save_settings(self):
-        with open(self.settings_file, "w") as file:
-            json.dump({"dialog_enabled": self.dialog_enabled}, file)
 
 
     def toggle_dialog(self):
