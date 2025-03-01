@@ -12,6 +12,8 @@ os.environ['LANG'] = 'uk_UA.UTF-8'
 import locale
 locale.setlocale(locale.LC_ALL, 'uk_UA')
 
+
+
 # Визначення шляху до папки з грою
 if getattr(sys, 'frozen', False):
     application_path = os.path.dirname(sys.executable)
@@ -28,51 +30,48 @@ os.makedirs(folder, exist_ok=True)
 class Minesweeper:
     def __init__(self, root, size=10, mines=10):
         self.root = root
-        self.size = size
-        self.mines = mines
-        self.buttons = []
-        self.board = []
-        self.game_over = False
-        self.flagged = set()
-        self.first_click = True
         self.settings_file = "settings.json"
         
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
-
-        self.history_window = None
-        self.info_window = None 
+        # Ініціалізація тимчасових значень
+        self.dark_mode = False
+        self.dialog_enabled = True
+        self.last_difficulty = "Легкий"  # Значення за замовчуванням
         
-        # Завантажити налаштування
+        # 1. Завантажити налаштування ПЕРШИМ
         self.load_settings()
         
-        # Ініціалізація Tkinter змінних
+        # 2. Ініціалізація Tkinter змінних ПОСЛЯ завантаження налаштувань
         self.dialog_var = tk.BooleanVar(value=self.dialog_enabled)
         self.difficulty_var = tk.StringVar(value=self.last_difficulty)
 
+        # 3. Встановити параметри гри
         difficulty_settings = {
             "Легкий": (10, 10),
             "Середній": (12, 20),
             "Важкий": (16, 40)
         }
         self.size, self.mines = difficulty_settings[self.last_difficulty]
-        
-        # Ініціалізація кольорів
+
+        # 4. Решта ініціалізацій
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.buttons = []
+        self.board = []
+        self.game_over = False
+        self.flagged = set()
+        self.first_click = True
+        self.history_window = None
+        self.info_window = None
         self.init_colors()
-        
-        # Створення віджетів
         self.create_widgets()
-        
-        # Оновлення кольорів
         self.update_colors()
-        
-        # Ініціалізація бази даних
         self.db_path = db_path
         self.conn = sqlite3.connect(self.db_path)
         self.create_db()
-        
-        # Початковий стан гри
         self.setup_initial_state()
+        
+        # 5. Зберегти налаштування лише після повної ініціалізації
+        self.save_settings()
 
     def init_colors(self):
         """Ініціалізує кольорові змінні на основі теми."""
@@ -187,27 +186,44 @@ class Minesweeper:
     
         
     def load_settings(self):
-        """Завантажує налаштування з файлу."""
+        """Завантажує налаштування зі збереженням українських символів."""
         try:
-            with open(self.settings_file, "r") as f:
+            with open(self.settings_file, "r", encoding='utf-8') as f:
                 settings = json.load(f)
                 self.dark_mode = settings.get("dark_mode", False)
                 self.dialog_enabled = settings.get("dialog_enabled", True)
-                self.last_difficulty = settings.get("last_difficulty", "Легкий")  # Новий параметр
-        except (FileNotFoundError, json.JSONDecodeError):
+                # Безпечне отримання рівня складності
+                self.last_difficulty = settings.get("last_difficulty", "Легкий")
+                if self.last_difficulty not in ["Легкий", "Середній", "Важкий"]:
+                    self.last_difficulty = "Легкий"  # Значення за замовчуванням при помилці
+                    
+        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+            print()
+                #f"Помилка завантаження налаштувань: {e}"
             self.dark_mode = False
             self.dialog_enabled = True
             self.last_difficulty = "Легкий"
             self.save_settings()
 
     def save_settings(self):
-        """Зберігає поточні налаштування у файл."""
-        with open(self.settings_file, "w") as f:
-            json.dump({
-                "dark_mode": self.dark_mode,
-                "dialog_enabled": self.dialog_enabled,
-                "last_difficulty": self.difficulty_var.get()  # Додаємо поточний рівень
-            }, f, indent=4)
+        """Зберігає налаштування з українським текстом."""
+        try:
+            with open(self.settings_file, "w", encoding='utf-8') as f:
+                json.dump(
+                    {
+                        "dark_mode": self.dark_mode,
+                        "dialog_enabled": self.dialog_enabled,
+                        "last_difficulty": self.difficulty_var.get()
+                    },
+                    f,
+                    indent=4,
+                    ensure_ascii=False  # Вимкнути ASCII-кодування
+                )
+            print()
+                #"Налаштування успішно збережено!"
+        except Exception as e:
+            print()
+                #f"Помилка збереження налаштувань: {e}"
 
     def toggle_theme(self):
         """Перемикає тему та оновлює всі елементи."""
