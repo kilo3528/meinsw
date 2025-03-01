@@ -80,6 +80,21 @@ class Minesweeper:
             self.mine_color = "#000000"
             self.flag_color = "#0000ff"
             
+        # Налаштування стилів для чекбоксу
+        self.style = ttk.Style()
+        self.style.configure("TCheckbutton", 
+                           background=self.bg_color,
+                           foreground=self.text_color,
+                           fieldbackground=self.bg_color,
+                           indicatordiameter=15,
+                           indicatorbackground=self.button_bg_color,
+                           relief="flat")
+        
+        self.style.map("TCheckbutton",
+                      background=[("active", self.bg_color)],
+                      indicatorcolor=[("selected", self.text_color)])
+        
+            
     def update_colors(self):
         """Оновлює кольори всіх елементів."""
         # Оновлення фону
@@ -493,6 +508,7 @@ class Minesweeper:
             self.create_board()  # Використовуємо правильний метод
 
 
+    # Оновлений метод show_history():
     def show_history(self):
         """Показує історію ігор з бази даних."""
         history_window = tk.Toplevel(self.root)
@@ -500,16 +516,33 @@ class Minesweeper:
         history_window.geometry("400x300")
         history_window.configure(bg=self.bg_color)
 
-        history_listbox = tk.Listbox(history_window, bg=self.button_bg_color, fg=self.text_color)
-        history_listbox.pack(fill="both", expand=True)
+        # Створення контейнера для списку та скролбару
+        container = tk.Frame(history_window, bg=self.bg_color)
+        container.pack(fill="both", expand=True, padx=5, pady=5)
 
+        # Створення скролбару
+        scrollbar = tk.Scrollbar(container)
+        scrollbar.pack(side="right", fill="y")
+
+        # Створення списку з підтримкою скролу
+        history_listbox = tk.Listbox(
+            container,
+            bg=self.button_bg_color,
+            fg=self.text_color,
+            yscrollcommand=scrollbar.set
+        )
+        history_listbox.pack(side="left", fill="both", expand=True)
+
+        # Налаштування взаємодії скролбару
+        scrollbar.config(command=history_listbox.yview)
+
+        # Заповнення списку даними
         with self.conn:
             cursor = self.conn.execute("SELECT date, result, difficulty FROM games ORDER BY id DESC")
             rows = cursor.fetchall()
 
         for row in rows:
             history_listbox.insert(tk.END, f"Дата: {row[0]}, Результат: {row[1]}, Складність: {row[2]}")
-
 
 
     def toggle_dialog(self):
@@ -531,8 +564,10 @@ class Minesweeper:
             settings_frame,
             text="Запит при першому кліку на міну",
             variable=self.dialog_var,
-            command=self.toggle_dialog
+            command=self.toggle_dialog,
+            style="TCheckbutton"  # Додано стиль
         )
+        
         checkbox.pack(anchor='w', padx=20)
 
         frame = tk.Frame(info_window, bg=self.bg_color)
