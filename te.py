@@ -81,6 +81,17 @@ class Minesweeper:
                                 troughcolor=self.bg_color,
                                 arrowcolor=self.text_color)
             self._configure_scrollbar_style()
+            self.style.configure("TCheckbutton", 
+                           background=self.bg_color,
+                           foreground=self.text_color,
+                           fieldbackground=self.bg_color,
+                           indicatordiameter=15,
+                           indicatorbackground=self.button_bg_color,
+                           relief="flat")
+            self.style.map("TCheckbutton",
+                          background=[("active", self.bg_color)],
+                          indicatorcolor=[("selected", self.text_color)],
+                          indicatorbackground=[("selected", self.button_active_bg)]) 
         else:
             self.bg_color = "#ffffff"
             self.button_bg_color = "#e0e0e0"
@@ -94,6 +105,17 @@ class Minesweeper:
                                 troughcolor=self.bg_color,
                                 arrowcolor=self.text_color)
             self._configure_scrollbar_style()
+            self.style.configure("TCheckbutton", 
+                           background=self.bg_color,
+                           foreground=self.text_color,
+                           fieldbackground=self.bg_color,
+                           indicatordiameter=15,
+                           indicatorbackground=self.button_bg_color,
+                           relief="flat")
+            self.style.map("TCheckbutton",
+                          background=[("active", self.bg_color)],
+                          indicatorcolor=[("selected", self.text_color)],
+                          indicatorbackground=[("selected", "#4682B4")])
 
 
     def _configure_scrollbar_style(self):
@@ -159,12 +181,12 @@ class Minesweeper:
                            foreground=self.text_color,
                            fieldbackground=self.bg_color,
                            indicatordiameter=15,
-                           indicatorbackground=self.button_bg_color,
-                           relief="flat")
+                           indicatorbackground=self.button_bg_color)
         
         self.style.map("TCheckbutton",
-                      background=[("active", self.bg_color)],
-                      indicatorcolor=[("selected", self.text_color)])
+                 indicatorbackground=[("selected", self.button_active_bg if self.dark_mode else "#4682B4")])
+
+        
 
         
     
@@ -628,32 +650,39 @@ class Minesweeper:
         info_window.resizable(False, False)
         info_window.configure(bg=self.bg_color)
 
-        settings_frame = tk.Frame(info_window, bg=self.bg_color)
-        settings_frame.pack(pady=10)
+        # Головний контейнер для всіх елементів
+        main_frame = tk.Frame(info_window, bg=self.bg_color)
+        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
-        checkbox = ttk.Checkbutton(
-            settings_frame,
+        # Чекбокс без додаткових рамок
+        self.dialog_checkbox = ttk.Checkbutton(
+            main_frame,
             text="Запит при першому кліку на міну",
             variable=self.dialog_var,
             command=self.toggle_dialog,
-            style="TCheckbutton"  # Додано стиль
+            style="TCheckbutton"
         )
-        
-        checkbox.pack(anchor='w', padx=20)
+        self.dialog_checkbox.pack(anchor='w', pady=(0, 10))
 
-        frame = tk.Frame(info_window, bg=self.bg_color)
-        frame.pack(fill='both', expand=True)
-
-        self.info_text = tk.Text(frame, wrap='word', height=20, width=50, bg=self.button_bg_color, fg=self.text_color)
-        self.info_text.pack(side=tk.LEFT, fill='both', expand=True)
+        # Текстове поле зі скролом в тому ж контейнері
+        self.info_text = tk.Text(
+            main_frame,
+            wrap='word',
+            height=20,
+            width=50,
+            bg=self.button_bg_color,
+            fg=self.text_color,
+            borderwidth=0  # Видаляємо рамку
+        )
+        self.info_text.pack(side='left', fill='both', expand=True)
 
         scrollbar = ttk.Scrollbar(
-        frame,
-        orient="vertical",
-        style="Vertical.TScrollbar",
-        command=self.info_text.yview
+            main_frame,
+            orient="vertical",
+            style="Vertical.TScrollbar",
+            command=self.info_text.yview
         )
-        scrollbar.pack(side="right", fill="y")
+        scrollbar.pack(side='right', fill='y')
         self.info_text.config(yscrollcommand=scrollbar.set)
         
         self.info_text.insert(tk.END, """
