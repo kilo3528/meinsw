@@ -137,15 +137,16 @@ class Minesweeper:
 
     def _refresh_scrollbars(self):
         """Оновлює всі існуючі скролбари в додатку."""
-        # Оновлюємо скролбар в історії
+        # Для інформаційного вікна
+        if hasattr(self, 'info_window') and self.info_window is not None:
+            if self.info_window.winfo_exists():
+                for child in self.info_window.winfo_children():
+                    if isinstance(child, ttk.Scrollbar):
+                        child.configure(style="Vertical.TScrollbar")
+
+        # Для вікна історії
         if self.history_window and self.history_window.winfo_exists():
             for child in self.history_window.winfo_children():
-                if isinstance(child, ttk.Scrollbar):
-                    child.configure(style="Vertical.TScrollbar")
-        
-        # Оновлюємо скролбар в інформаційному вікні
-        if hasattr(self, 'info_window') and self.info_window.winfo_exists():
-            for child in self.info_window.winfo_children():
                 if isinstance(child, ttk.Scrollbar):
                     child.configure(style="Vertical.TScrollbar")
             
@@ -228,6 +229,10 @@ class Minesweeper:
                 fg=self.text_color,
                 insertbackground=self.text_color
             )
+        if self.history_window and self.history_window.winfo_exists():
+            for widget in self.history_window.winfo_children():
+                if isinstance(widget, tk.Listbox):
+                    widget.configure(bg=self.bg_color, fg=self.text_color)
         
         self.save_settings()
         self.restart_game()
@@ -594,48 +599,41 @@ class Minesweeper:
 
     # Оновлений метод show_history():
     def show_history(self):
-        """Показує історію ігор з бази даних."""
-        # Якщо вікно вже існує - перефокусувати його
+        """Показує історію ігор з однаковим фоном."""
         if self.history_window and self.history_window.winfo_exists():
             self.history_window.lift()
             return
 
-        # Створення нового вікна
         self.history_window = tk.Toplevel(self.root)
         self.history_window.title("Історія ігор")
-        self.history_window.geometry("400x300")
+        self.history_window.geometry("500x400")
         self.history_window.resizable(False, False)
         self.history_window.configure(bg=self.bg_color)
-        
 
-        # Обробник закриття вікна
-        def on_close():
-            self.history_window.destroy()
-            self.history_window = None
+        # Головний контейнер
+        main_frame = tk.Frame(self.history_window, bg=self.bg_color)
+        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
-        self.history_window.protocol("WM_DELETE_WINDOW", on_close)
-
-        # Залишок коду створення інтерфейсу
-        container = tk.Frame(self.history_window, bg=self.bg_color)
-        container.pack(fill="both", expand=True, padx=5, pady=5)
-
-        scrollbar = ttk.Scrollbar(
-        container,
-        orient="vertical",
-        style="Vertical.TScrollbar"
-        )
-        scrollbar.pack(side="right", fill="y")
-
+        # Список історії
         history_listbox = tk.Listbox(
-            container,
-            bg=self.button_bg_color,
+            main_frame,
+            bg=self.bg_color,
             fg=self.text_color,
-            yscrollcommand=scrollbar.set
+            borderwidth=0,
+            highlightthickness=0,
+            font=("Arial", 10)  # Додано закриваючу дужку
         )
-        history_listbox.pack(side="left", fill="both", expand=True)
+        history_listbox.pack(side='left', fill='both', expand=True)
 
+        # Скролбар
+        scrollbar = ttk.Scrollbar(
+            main_frame,
+            orient="vertical",
+            style="Vertical.TScrollbar",
+            command=history_listbox.yview
+        )
+        scrollbar.pack(side='right', fill='y')
         history_listbox.config(yscrollcommand=scrollbar.set)
-        scrollbar.config(command=history_listbox.yview)
 
         # Заповнення даними
         with self.conn:
@@ -644,6 +642,14 @@ class Minesweeper:
 
         for row in rows:
             history_listbox.insert(tk.END, f"Дата: {row[0]}, Результат: {row[1]}, Складність: {row[2]}")
+        
+
+        # Обробник закриття вікна
+        def on_close():
+            self.history_window.destroy()
+            self.history_window = None
+
+        self.history_window.protocol("WM_DELETE_WINDOW", on_close)
 
 
     def toggle_dialog(self):
