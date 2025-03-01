@@ -36,6 +36,9 @@ class Minesweeper:
         self.flagged = set()
         self.first_click = True
         self.settings_file = "settings.json"
+        
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
 
         self.history_window = None
         
@@ -73,6 +76,11 @@ class Minesweeper:
             self.reveal_color = "#36393f"
             self.mine_color = "#000000"
             self.flag_color = "#f39c12"
+            self.style.configure("Vertical.TScrollbar",
+                                background=self.button_bg_color,
+                                troughcolor=self.bg_color,
+                                arrowcolor=self.text_color)
+            self._configure_scrollbar_style()
         else:
             self.bg_color = "#ffffff"
             self.button_bg_color = "#e0e0e0"
@@ -81,21 +89,42 @@ class Minesweeper:
             self.reveal_color = "#d0d0d0"
             self.mine_color = "#000000"
             self.flag_color = "#0000ff"
-            
-        # Налаштування стилів для чекбоксу
-        self.style = ttk.Style()
-        self.style.configure("TCheckbutton", 
-                           background=self.bg_color,
-                           foreground=self.text_color,
-                           fieldbackground=self.bg_color,
-                           indicatordiameter=15,
-                           indicatorbackground=self.button_bg_color,
-                           relief="flat")
+            self.style.configure("Vertical.TScrollbar",
+                                background=self.button_bg_color,
+                                troughcolor=self.bg_color,
+                                arrowcolor=self.text_color)
+            self._configure_scrollbar_style()
+
+
+    def _configure_scrollbar_style(self):
+        """Оновлює стилі скролбарів відповідно до теми."""
+        self.style.configure(
+            "Vertical.TScrollbar",
+            background=self.button_bg_color,
+            troughcolor=self.bg_color,
+            bordercolor=self.bg_color,
+            arrowcolor=self.text_color,
+            gripcount=0  # Видаляємо непотрібний елемент
+        )
+        self.style.map(
+            "Vertical.TScrollbar",
+            background=[('active', self.button_active_bg)],
+            arrowcolor=[('active', self.text_color)]
+        )
+
+    def _refresh_scrollbars(self):
+        """Оновлює всі існуючі скролбари в додатку."""
+        # Оновлюємо скролбар в історії
+        if self.history_window and self.history_window.winfo_exists():
+            for child in self.history_window.winfo_children():
+                if isinstance(child, ttk.Scrollbar):
+                    child.configure(style="Vertical.TScrollbar")
         
-        self.style.map("TCheckbutton",
-                      background=[("active", self.bg_color)],
-                      indicatorcolor=[("selected", self.text_color)])
-        
+        # Оновлюємо скролбар в інформаційному вікні
+        if hasattr(self, 'info_window') and self.info_window.winfo_exists():
+            for child in self.info_window.winfo_children():
+                if isinstance(child, ttk.Scrollbar):
+                    child.configure(style="Vertical.TScrollbar")
             
     def update_colors(self):
         """Оновлює кольори всіх елементів."""
@@ -121,6 +150,23 @@ class Minesweeper:
         # Оновлення тексту кнопки теми
         theme_text = "Світла тема" if self.dark_mode else "Темна тема"
         self.toggle_theme_button.config(text=theme_text)
+
+
+        # Налаштування стилів для чекбоксу
+        self.style = ttk.Style()
+        self.style.configure("TCheckbutton", 
+                           background=self.bg_color,
+                           foreground=self.text_color,
+                           fieldbackground=self.bg_color,
+                           indicatordiameter=15,
+                           indicatorbackground=self.button_bg_color,
+                           relief="flat")
+        
+        self.style.map("TCheckbutton",
+                      background=[("active", self.bg_color)],
+                      indicatorcolor=[("selected", self.text_color)])
+
+        
     
         
     def load_settings(self):
@@ -144,14 +190,17 @@ class Minesweeper:
             }, f, indent=4)
 
     def toggle_theme(self):
-        """Перемикає тему та зберігає налаштування."""
+        """Перемикає тему та оновлює всі компоненти."""
         self.dark_mode = not self.dark_mode
         self.init_colors()
+        self._configure_scrollbar_style()  # Важливо: спочатку оновлюємо стилі
+        
+        # Примусово оновлюємо всі скролбари
+        self._refresh_scrollbars()
+        
         self.save_settings()
         self.update_colors()
-        self.clear_game_frame()
-        self.create_board()
-        self.set_board_state("disabled")
+        self.restart_game()
 
     def create_widgets(self):
         """Створює елементи інтерфейсу."""
@@ -169,7 +218,18 @@ class Minesweeper:
         self.history_button = ttk.Button(self.menu_frame, text="Історія ігор", command=self.show_history)
         self.history_button.grid(row=0, column=2, padx=5, pady=5, sticky="w")
         
-        self.difficulty_menu = ttk.OptionMenu(self.menu_frame, self.difficulty_var, "Легкий", "Середній", "Важкий", command=self.set_difficulty)
+        # Ініціалізація меню вибору рівня
+        self.difficulty_var.set("Легкий")  # Встановлюємо початкове значення
+        available_difficulties = ["Середній", "Важкий"]  # Доступні рівні на старті
+        
+        self.difficulty_menu = ttk.OptionMenu(
+            self.menu_frame,
+            self.difficulty_var,
+            self.difficulty_var.get(),
+            *available_difficulties,
+            command=self.set_difficulty
+        )
+        self.difficulty_menu.config(width=6.2)
         self.difficulty_menu.grid(row=0, column=3, padx=5, pady=5, sticky="w")
         
         self.info_button = ttk.Button(self.menu_frame, text="...", command=self.show_info)
@@ -425,8 +485,6 @@ class Minesweeper:
             self.save_game("Виграв")
             messagebox.showinfo("Гра завершена", "Ви виграли!")
 
-
-
     def reset_game(self):
         """Скидає гру для нового раунду."""
         self.game_over = False
@@ -435,10 +493,6 @@ class Minesweeper:
         self.buttons = []
         self.board = []
         self.create_widgets()  # Перестворюємо інтерфейс
-
-
-
-
 
     def reveal_cell(self, row, col):
         """Відкриває клітинку і показує число мін поруч."""
@@ -479,37 +533,33 @@ class Minesweeper:
         all_revealed = all(self.buttons[r][c]['state'] == 'disabled' for r in range(self.size) for c in range(self.size) if self.board[r][c] != 'M')
         return correct_flags and all_revealed
 
-    def set_difficulty(self, value):
-        """Змінює рівень складності гри та оновлює меню."""
+    def set_difficulty(self, selected_difficulty):
+        """Обробляє зміну рівня складності."""
+        # Оновлюємо поточний рівень
+        self.difficulty_var.set(selected_difficulty)
+        
+        # Генеруємо список доступних рівнів
+        all_difficulties = ["Легкий", "Середній", "Важкий"]
+        available = [d for d in all_difficulties if d != selected_difficulty]
+        
+        # Оновлюємо випадаюче меню
+        menu = self.difficulty_menu["menu"]
+        menu.delete(0, "end")
+        for difficulty in available:
+            menu.add_command(
+                label=difficulty,
+                command=lambda v=difficulty: self.set_difficulty(v)
+            )
+        
+        # Оновлюємо параметри гри
         difficulty_settings = {
             "Легкий": (10, 10),
             "Середній": (12, 20),
             "Важкий": (16, 40)
         }
-        
-        if value in difficulty_settings:
-            # Оновлюємо поточний рівень складності
-            self.difficulty_var.set(value)  # ДОДАНО: оновлення змінної ПЕРЕД створенням меню
-        
-            # Оновлюємо налаштування гри
-            self.size, self.mines = difficulty_settings[value]
-            self.update_window_size()
-            self.restart_game()
-            
-            # Оновлюємо випадаюче меню
-            self.difficulty_menu['menu'].delete(0, 'end')
-            
-            # Додаємо тільки доступні рівні (виключаємо поточний)
-            available_difficulties = [
-                d for d in difficulty_settings.keys() 
-                if d != self.difficulty_var.get()
-            ]
-            
-            for difficulty in available_difficulties:
-                self.difficulty_menu['menu'].add_command(
-                    label=difficulty,
-                    command=lambda v=difficulty: self.set_difficulty(v)
-                )
+        self.size, self.mines = difficulty_settings[selected_difficulty]
+        self.update_window_size()
+        self.restart_game()
 
 
     # Оновлений метод show_history():
@@ -526,6 +576,7 @@ class Minesweeper:
         self.history_window.geometry("400x300")
         self.history_window.resizable(False, False)
         self.history_window.configure(bg=self.bg_color)
+        
 
         # Обробник закриття вікна
         def on_close():
@@ -538,7 +589,11 @@ class Minesweeper:
         container = tk.Frame(self.history_window, bg=self.bg_color)
         container.pack(fill="both", expand=True, padx=5, pady=5)
 
-        scrollbar = tk.Scrollbar(container)
+        scrollbar = ttk.Scrollbar(
+        container,
+        orient="vertical",
+        style="Vertical.TScrollbar"
+        )
         scrollbar.pack(side="right", fill="y")
 
         history_listbox = tk.Listbox(
@@ -549,6 +604,7 @@ class Minesweeper:
         )
         history_listbox.pack(side="left", fill="both", expand=True)
 
+        history_listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=history_listbox.yview)
 
         # Заповнення даними
@@ -591,9 +647,13 @@ class Minesweeper:
         self.info_text = tk.Text(frame, wrap='word', height=20, width=50, bg=self.button_bg_color, fg=self.text_color)
         self.info_text.pack(side=tk.LEFT, fill='both', expand=True)
 
-        scrollbar = tk.Scrollbar(frame, command=self.info_text.yview)
-        scrollbar.pack(side=tk.RIGHT, fill='y')
-
+        scrollbar = ttk.Scrollbar(
+        frame,
+        orient="vertical",
+        style="Vertical.TScrollbar",
+        command=self.info_text.yview
+        )
+        scrollbar.pack(side="right", fill="y")
         self.info_text.config(yscrollcommand=scrollbar.set)
         
         self.info_text.insert(tk.END, """
