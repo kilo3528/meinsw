@@ -48,7 +48,14 @@ class Minesweeper:
         
         # Ініціалізація Tkinter змінних
         self.dialog_var = tk.BooleanVar(value=self.dialog_enabled)
-        self.difficulty_var = tk.StringVar(value="Легкий")
+        self.difficulty_var = tk.StringVar(value=self.last_difficulty)
+
+        difficulty_settings = {
+            "Легкий": (10, 10),
+            "Середній": (12, 20),
+            "Важкий": (16, 40)
+        }
+        self.size, self.mines = difficulty_settings[self.last_difficulty]
         
         # Ініціалізація кольорів
         self.init_colors()
@@ -186,9 +193,11 @@ class Minesweeper:
                 settings = json.load(f)
                 self.dark_mode = settings.get("dark_mode", False)
                 self.dialog_enabled = settings.get("dialog_enabled", True)
+                self.last_difficulty = settings.get("last_difficulty", "Легкий")  # Новий параметр
         except (FileNotFoundError, json.JSONDecodeError):
             self.dark_mode = False
             self.dialog_enabled = True
+            self.last_difficulty = "Легкий"
             self.save_settings()
 
     def save_settings(self):
@@ -196,7 +205,8 @@ class Minesweeper:
         with open(self.settings_file, "w") as f:
             json.dump({
                 "dark_mode": self.dark_mode,
-                "dialog_enabled": self.dialog_enabled
+                "dialog_enabled": self.dialog_enabled,
+                "last_difficulty": self.difficulty_var.get()  # Додаємо поточний рівень
             }, f, indent=4)
 
     def toggle_theme(self):
@@ -240,13 +250,16 @@ class Minesweeper:
         self.history_button.grid(row=0, column=2, padx=5, pady=5, sticky="w")
         
         # Ініціалізація меню вибору рівня
-        self.difficulty_var.set("Легкий")  # Встановлюємо початкове значення
-        available_difficulties = ["Середній", "Важкий"]  # Доступні рівні на старті
+        current_difficulty = self.difficulty_var.get()
+        available_difficulties = [
+            d for d in ["Легкий", "Середній", "Важкий"] 
+            if d != current_difficulty
+        ]
         
         self.difficulty_menu = ttk.OptionMenu(
             self.menu_frame,
             self.difficulty_var,
-            self.difficulty_var.get(),
+            current_difficulty,  # Поточний збережений рівень
             *available_difficulties,
             command=self.set_difficulty
         )
@@ -580,6 +593,7 @@ class Minesweeper:
         """Обробляє зміну рівня складності."""
         # Оновлюємо поточний рівень
         self.difficulty_var.set(selected_difficulty)
+        self.save_settings()
         
         # Генеруємо список доступних рівнів
         all_difficulties = ["Легкий", "Середній", "Важкий"]
@@ -614,7 +628,7 @@ class Minesweeper:
 
         self.history_window = tk.Toplevel(self.root)
         self.history_window.title("Історія ігор")
-        self.history_window.geometry("500x400")
+        self.history_window.geometry("462x350")
         self.history_window.resizable(False, False)
         self.history_window.configure(bg=self.bg_color)
 
