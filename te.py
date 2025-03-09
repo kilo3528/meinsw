@@ -53,6 +53,7 @@ class Minesweeper:
         self.size, self.mines = difficulty_settings[self.last_difficulty]
 
         # 4. Решта ініціалізацій
+        ##self.last_difficulty = self.difficulty_var.get()
         self.style = ttk.Style()
         self.style.theme_use('clam')
         self.buttons = []
@@ -69,6 +70,7 @@ class Minesweeper:
         self.conn = sqlite3.connect(self.db_path)
         self.create_db()
         self.setup_initial_state()
+        
         
         # 5. Зберегти налаштування лише після повної ініціалізації
         self.save_settings()
@@ -181,7 +183,66 @@ class Minesweeper:
         self.toggle_theme_button.config(text=theme_text)
 
         
+    def confirm_action(self, action):
+        """Створює діалогове вікно для підтвердження дії."""
+        if self.game_over:  # Якщо гра вже завершена, не викликаємо діалог
+            return True
+            
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Підтвердження")
+        dialog.geometry("400x120")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.bg_color)
+        
+        # Центрування вікна
+        root_x = self.root.winfo_x()
+        root_y = self.root.winfo_y()
+        root_width = self.root.winfo_width()
+        root_height = self.root.winfo_height()
+        
+        dialog_width = 400
+        dialog_height = 120
+        x = root_x + (root_width - dialog_width) // 2
+        y = root_y + (root_height - dialog_height) // 2
+        
+        dialog.geometry(f"+{x}+{y}")
 
+        result = {"choice": False}
+
+        label_text = "Ви впевнені, що хочете змінити налаштування?\nНезбережені дані буде втрачено!"
+        if action == "theme":
+            label_text = "Ви впевнені, що хочете змінити тему?\nПоточна гра буде перезапущена!"
+        elif action == "difficulty":
+            label_text = "Ви впевнені, що хочете змінити рівень складності?\nПоточна гра буде перезапущена!"
+
+        label = tk.Label(dialog, text=label_text, bg=self.bg_color, fg=self.text_color)
+        label.pack(pady=10)
+
+        def on_confirm():
+            result["choice"] = True
+            dialog.destroy()
+
+        def on_cancel():
+            result["choice"] = False
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog, bg=self.bg_color)
+        btn_frame.pack(pady=10)
+
+        confirm_btn = ttk.Button(btn_frame, text="Продовжити", command=on_confirm, style="TButton")
+        confirm_btn.pack(side=tk.LEFT, padx=10)
+
+        cancel_btn = ttk.Button(btn_frame, text="Скасувати", command=on_cancel, style="TButton")
+        cancel_btn.pack(side=tk.LEFT, padx=10)
+
+        dialog.protocol("WM_DELETE_WINDOW", on_cancel)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        self.root.wait_window(dialog)
+        
+        return result["choice"]
+
+    
         
     
         
@@ -227,6 +288,8 @@ class Minesweeper:
 
     def toggle_theme(self):
         """Перемикає тему та оновлює всі елементи."""
+        if not self.game_over and not self.confirm_action("theme"):
+            return
         self.dark_mode = not self.dark_mode
         self.init_colors()
         
@@ -243,11 +306,11 @@ class Minesweeper:
             if window and window.winfo_exists():
                 window.configure(bg=self.bg_color)
                 self._update_widgets(window)  # Викликаємо рекурсивне оновлення
-
-        # Оновлюємо стилі скролбарів
-        self._refresh_scrollbars()
-        self.save_settings()
-        self.restart_game()
+        
+            self.init_colors()
+            self.update_colors()
+            self.save_settings()
+            self.restart_game(confirm=False)  # Відключаємо повторне підтвердження
 
     def create_widgets(self):
         """Створює елементи інтерфейсу."""
@@ -384,10 +447,15 @@ class Minesweeper:
         self.update_numbers()
         self.set_board_state("normal")
 
-    def restart_game(self):
-        """Перезапускає гру."""
+    def restart_game(self, confirm=True):
+        """Перезапускає гру з опціональним підтвердженням"""
+        if confirm and not self.game_over and not self.confirm_action("restart"):
+            return
+            
+        # Решта коду перезапуску
         self.game_over = False
-        self.flagged.clear()  # Очистити набір флажків
+        self.first_click = True
+        self.flagged.clear()
         self.clear_game_frame()
         self.create_board()
         self.place_mines()
@@ -606,24 +674,12 @@ class Minesweeper:
         return correct_flags and all_revealed
 
     def set_difficulty(self, selected_difficulty):
-        """Обробляє зміну рівня складності."""
-        # Оновлюємо поточний рівень
-        self.difficulty_var.set(selected_difficulty)
-        self.save_settings()
-        
-        # Генеруємо список доступних рівнів
-        all_difficulties = ["Легкий", "Середній", "Важкий"]
-        available = [d for d in all_difficulties if d != selected_difficulty]
-        
-        # Оновлюємо випадаюче меню
-        menu = self.difficulty_menu["menu"]
-        menu.delete(0, "end")
-        for difficulty in available:
-            menu.add_command(
-                label=difficulty,
-                command=lambda v=difficulty: self.set_difficulty(v)
-            )
-        
+        """Обробляє зміну рівня складності з підтвердженням"""
+        # Якщо гра активна і користувач відмовляється - відновлюємо попередній вибір
+        if not self.game_over and not self.confirm_action("difficulty"):
+            self.difficulty_var.set(self.last_difficulty)  # Відновлення попереднього значення
+            return
+            
         # Оновлюємо параметри гри
         difficulty_settings = {
             "Легкий": (10, 10),
@@ -631,8 +687,11 @@ class Minesweeper:
             "Важкий": (16, 40)
         }
         self.size, self.mines = difficulty_settings[selected_difficulty]
+        self.last_difficulty = selected_difficulty  # Зберігаємо новий рівень
+        self.difficulty_var.set(selected_difficulty)
+        self.save_settings()
         self.update_window_size()
-        self.restart_game()
+        self.restart_game(confirm=False)  # Відключаємо повторне підтвердження
 
 
     # Оновлений метод show_history():
