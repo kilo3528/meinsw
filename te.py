@@ -209,7 +209,7 @@ class Minesweeper:
 
         result = {"choice": False}
 
-        label_text = "Ви впевнені, що хочете змінити налаштування?\nНезбережені дані буде втрачено!"
+        label_text = "Ви впевнені, що хочете перезапустити гру?\nНезбережені дані буде втрачено!"
         if action == "theme":
             label_text = "Ви впевнені, що хочете змінити тему?\nПоточна гра буде перезапущена!"
         elif action == "difficulty":
@@ -345,7 +345,7 @@ class Minesweeper:
         self.difficulty_menu.config(width=6.2)
         self.difficulty_menu.grid(row=0, column=3, padx=5, pady=5, sticky="w")
         
-        self.info_button = ttk.Button(self.menu_frame, text="...", command=self.show_info)
+        self.info_button = ttk.Button(self.menu_frame, text="..", command=self.show_info)
         self.info_button.grid(row=0, column=4, padx=5, pady=5, sticky="w")
         
         # Ігрове поле
@@ -675,11 +675,17 @@ class Minesweeper:
 
     def set_difficulty(self, selected_difficulty):
         """Обробляє зміну рівня складності з підтвердженням"""
-        # Якщо гра активна і користувач відмовляється - відновлюємо попередній вибір
+        # Зберігаємо поточний рівень перед зміною
+        previous_difficulty = self.last_difficulty
+        
+        # Якщо гра активна і користувач відмовляється
         if not self.game_over and not self.confirm_action("difficulty"):
-            self.difficulty_var.set(self.last_difficulty)  # Відновлення попереднього значення
+            # Відновлюємо попередній рівень у меню
+            self.difficulty_var.set(previous_difficulty)
+            # Оновлюємо випадаючий список
+            self._update_difficulty_menu(previous_difficulty)
             return
-            
+        
         # Оновлюємо параметри гри
         difficulty_settings = {
             "Легкий": (10, 10),
@@ -687,12 +693,30 @@ class Minesweeper:
             "Важкий": (16, 40)
         }
         self.size, self.mines = difficulty_settings[selected_difficulty]
-        self.last_difficulty = selected_difficulty  # Зберігаємо новий рівень
+        self.last_difficulty = selected_difficulty  # Оновлюємо останній рівень
+        
+        # Оновлюємо інтерфейс
         self.difficulty_var.set(selected_difficulty)
+        self._update_difficulty_menu(selected_difficulty)
         self.save_settings()
         self.update_window_size()
-        self.restart_game(confirm=False)  # Відключаємо повторне підтвердження
+        self.restart_game(confirm=False)
 
+    def _update_difficulty_menu(self, current_difficulty):
+        """Оновлює опції випадаючого меню"""
+        menu = self.difficulty_menu["menu"]
+        menu.delete(0, "end")
+        
+        # Створюємо список всіх рівнів окрім поточного
+        all_difficulties = ["Легкий", "Середній", "Важкий"]
+        available = [d for d in all_difficulties if d != current_difficulty]
+        
+        # Додаємо нові опції
+        for difficulty in available:
+            menu.add_command(
+                label=difficulty,
+                command=lambda v=difficulty: self.set_difficulty(v)
+            )
 
     # Оновлений метод show_history():
     def show_history(self):
