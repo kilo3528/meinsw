@@ -53,7 +53,9 @@ class Minesweeper:
         self.size, self.mines = difficulty_settings[self.last_difficulty]
 
         # 4. Решта ініціалізацій
-        ##self.last_difficulty = self.difficulty_var.get()
+        self.difficulty_menu = None
+        self.difficulty_var.set(self.last_difficulty)
+        self.game_active = False
         self.style = ttk.Style()
         self.style.theme_use('clam')
         self.buttons = []
@@ -68,6 +70,7 @@ class Minesweeper:
         self.update_colors()
         self.db_path = db_path
         self.conn = sqlite3.connect(self.db_path)
+        self._update_difficulty_menu()
         self.create_db()
         self.setup_initial_state()
         
@@ -97,10 +100,14 @@ class Minesweeper:
                            indicatordiameter=15,
                            indicatorbackground=self.button_bg_color,
                            relief="flat")
-            self.style.map("TCheckbutton",
-                          background=[("active", self.bg_color)],
-                          indicatorcolor=[("selected", self.text_color)],
-                          indicatorbackground=[("selected", self.button_active_bg)]) 
+            self.style.configure('TCheckbutton', 
+                    background=self.bg_color,
+                    foreground=self.text_color,
+                    indicatorbackground=self.button_bg_color)
+            self.style.map("TMenubutton",
+                      background=[('active', self.button_active_bg)])
+            
+            
         else:
             self.bg_color = "#ffffff"
             self.button_bg_color = "#e0e0e0"
@@ -109,10 +116,10 @@ class Minesweeper:
             self.reveal_color = "#d0d0d0"
             self.mine_color = "#000000"
             self.flag_color = "#0000ff"
-            self.style.configure("Vertical.TScrollbar",
-                                background=self.button_bg_color,
-                                troughcolor=self.bg_color,
-                                arrowcolor=self.text_color)
+            self.style.configure("Menu",
+                        background=self.button_bg_color,
+                        foreground=self.text_color,
+                        activebackground=self.button_active_bg)
             self._configure_scrollbar_style()
             self.style.configure("TCheckbutton", 
                            background=self.bg_color,
@@ -121,6 +128,10 @@ class Minesweeper:
                            indicatordiameter=15,
                            indicatorbackground=self.button_bg_color,
                            relief="flat")
+            self.style.configure('TCheckbutton', 
+                    background=self.bg_color,
+                    foreground=self.text_color,
+                    indicatorbackground=self.button_bg_color)
             self.style.map("TCheckbutton",
                           background=[("active", self.bg_color)],
                           indicatorcolor=[("selected", self.text_color)],
@@ -185,6 +196,8 @@ class Minesweeper:
         
     def confirm_action(self, action):
         """Створює діалогове вікно для підтвердження дії."""
+        if not self.game_active:  # Якщо гра не активна - не викликаємо діалог
+            return True
         if self.game_over:  # Якщо гра вже завершена, не викликаємо діалог
             return True
             
@@ -241,6 +254,61 @@ class Minesweeper:
         self.root.wait_window(dialog)
         
         return result["choice"]
+
+
+    def show_custom_dialog(self, title, message):
+        """Створює кастомне діалогове вікно у стилі програми"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("300x120")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.bg_color)
+        
+        # Центрування вікна
+        root_x = self.root.winfo_x()
+        root_y = self.root.winfo_y()
+        root_width = self.root.winfo_width()
+        root_height = self.root.winfo_height()
+        
+        dialog_width = 300
+        dialog_height = 120
+        x = root_x + (root_width - dialog_width) // 2
+        y = root_y + (root_height - dialog_height) // 2
+        dialog.geometry(f"+{x}+{y}")
+
+        # Заголовок
+        lbl_title = tk.Label(
+            dialog, 
+            text=title,
+            font=("Arial", 12, "bold"),
+            bg=self.bg_color,
+            fg=self.text_color
+        )
+        lbl_title.pack(pady=5)
+
+        # Повідомлення
+        lbl_message = tk.Label(
+            dialog, 
+            text=message,
+            font=("Arial", 10),
+            bg=self.bg_color,
+            fg=self.text_color
+        )
+        lbl_message.pack(pady=5)
+
+        # Кнопка OK
+        btn_ok = ttk.Button(
+            dialog, 
+            text="OK", 
+            command=dialog.destroy,
+            style="TButton"
+        )
+        btn_ok.pack(pady=10)
+
+        # Блокуємо інші вікна
+        dialog.transient(self.root)
+        dialog.grab_set()
+        self.root.wait_window(dialog)
 
     
         
@@ -306,7 +374,9 @@ class Minesweeper:
             if window and window.winfo_exists():
                 window.configure(bg=self.bg_color)
                 self._update_widgets(window)  # Викликаємо рекурсивне оновлення
-        
+
+            self._update_difficulty_menu_style()
+            self._update_menu_colors()
             self.init_colors()
             self.update_colors()
             self.save_settings()
@@ -338,22 +408,49 @@ class Minesweeper:
         self.difficulty_menu = ttk.OptionMenu(
             self.menu_frame,
             self.difficulty_var,
-            current_difficulty,  # Поточний збережений рівень
-            *available_difficulties,
+            self.last_difficulty,
+            *["Легкий", "Середній", "Важкий"],
             command=self.set_difficulty
         )
         self.difficulty_menu.config(width=6.2)
         self.difficulty_menu.grid(row=0, column=3, padx=5, pady=5, sticky="w")
         
-        self.info_button = ttk.Button(self.menu_frame, text="..", command=self.show_info)
+        
+        self.info_button = ttk.Button(self.menu_frame, text="...", command=self.show_info)
         self.info_button.grid(row=0, column=4, padx=5, pady=5, sticky="w")
         
         # Ігрове поле
         self.game_frame = tk.Frame(self.root, bg=self.bg_color)
         self.game_frame.pack(pady=10)
+
+        self._update_difficulty_menu_style()  
+        self._update_menu_colors() 
         
         self.update_window_size()
-        
+
+    def _update_difficulty_menu_style(self):
+        """Оновлює стиль випадаючого меню рівнів складності"""
+        menu = self.difficulty_menu["menu"]
+        menu.configure(
+            bg=self.button_bg_color,
+            fg=self.text_color,
+            activebackground=self.button_active_bg,
+            activeforeground=self.text_color
+        )
+        self.difficulty_menu.configure(style="TMenubutton")
+    
+
+    def _update_menu_colors(self):
+        """Оновлює кольори пунктів меню"""
+        menu = self.difficulty_menu["menu"]
+        for index in range(menu.index("end") + 1):
+            menu.entryconfigure(
+                index,
+                foreground=self.text_color,
+                background=self.button_bg_color,
+                activeforeground=self.text_color,
+                activebackground=self.button_active_bg
+            )
         
     def update_window_size(self):
         """Оновлює розмір вікна відповідно до складності гри."""
@@ -394,11 +491,13 @@ class Minesweeper:
 
     def setup_initial_state(self):
         """Очищає область гри і створює нову гру."""
+        self.game_active = False
         self.clear_game_frame()
         self.create_board()
         self.place_mines()
         self.update_numbers()
         self.set_board_state("disabled")
+        self.game_active = False  # Вимкнення прапорця активної гри
 
     def update_button_styles(self):
         """Оновлює стиль кнопок у меню."""
@@ -449,11 +548,14 @@ class Minesweeper:
 
     def restart_game(self, confirm=True):
         """Перезапускає гру з опціональним підтвердженням"""
-        if confirm and not self.game_over and not self.confirm_action("restart"):
+        # Змінюємо умову перевірки на наявність активної гри
+        if confirm and self.game_active and not self.confirm_action("restart"):
             return
             
         # Решта коду перезапуску
+        self.game_active = True 
         self.game_over = False
+        self.game_active = True  # Встановлюємо прапорець активної гри
         self.first_click = True
         self.flagged.clear()
         self.clear_game_frame()
@@ -462,6 +564,7 @@ class Minesweeper:
         self.update_numbers()
         self.set_board_state("normal")
 
+        
     def clear_game_frame(self):
         """Очищає область гри."""
         if hasattr(self, 'game_frame'):
@@ -581,6 +684,8 @@ class Minesweeper:
     
     def left_click(self, row, col):
         """Обробляє лівий клік на клітинці."""
+        if not self.game_active:
+            self.game_active = True 
         if self.game_over or (row, col) in self.flagged:
             return
 
@@ -602,7 +707,7 @@ class Minesweeper:
                     self.reveal_mines()
                     self.game_over = True
                     self.save_game("Програв")
-                    messagebox.showinfo("Гра завершена", "Ви програли!")
+                    self.show_custom_dialog("Гра завершена", "Ви програли!")
                     return
             else:
                 # Якщо діалог вимкнений або це не перший клік – одразу програємо
@@ -610,7 +715,7 @@ class Minesweeper:
                 self.reveal_mines()
                 self.game_over = True
                 self.save_game("Програв")
-                messagebox.showinfo("Гра завершена", "Ви програли!")
+                self.show_custom_dialog("Гра завершена", "Ви програли!")
                 return
 
         # Якщо це не міна, відкриваємо клітинку
@@ -697,28 +802,35 @@ class Minesweeper:
         
         # Оновлюємо інтерфейс
         self.difficulty_var.set(selected_difficulty)
-        self._update_difficulty_menu(selected_difficulty)
+        self._update_difficulty_menu()
         self.save_settings()
         self.update_window_size()
         self.restart_game(confirm=False)
 
-    def _update_difficulty_menu(self, current_difficulty):
-        """Оновлює опції випадаючого меню"""
+    def _update_difficulty_menu(self):
+        """Оновлює опції меню, залишаючи лише доступні рівні"""
+        current = self.difficulty_var.get()
         menu = self.difficulty_menu["menu"]
         menu.delete(0, "end")
         
-        # Створюємо список всіх рівнів окрім поточного
-        all_difficulties = ["Легкий", "Середній", "Важкий"]
-        available = [d for d in all_difficulties if d != current_difficulty]
+        # Додаємо лише рівні, які відрізняються від поточного
+        for level in ["Легкий", "Середній", "Важкий"]:
+            if level != current:
+                menu.add_command(
+                    label=level,
+                    command=lambda v=level: self.set_difficulty(v),
+                    foreground=self.text_color,
+                    background=self.button_bg_color,
+                    activeforeground=self.text_color,
+                    activebackground=self.button_active_bg
+                )
         
-        # Додаємо нові опції
-        for difficulty in available:
-            menu.add_command(
-                label=difficulty,
-                command=lambda v=difficulty: self.set_difficulty(v)
-            )
-
-    # Оновлений метод show_history():
+        # Явно оновлюємо відображене значення
+        if not current:
+            self.difficulty_var.set(self.last_difficulty)
+        else:
+            self.difficulty_var.set(current)
+                
     def show_history(self):
         """Показує історію ігор з однаковим фоном."""
         if self.history_window and self.history_window.winfo_exists():
@@ -806,7 +918,7 @@ class Minesweeper:
             text="Запит при першому кліку на міну",
             variable=self.dialog_var,
             command=self.toggle_dialog,
-            style="TCheckbutton"
+            style='TCheckbutton'  # Додаємо явне вказівання стилю
         )
         self.dialog_checkbox.pack(anchor='w', pady=(0, 10))
 
