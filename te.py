@@ -83,11 +83,12 @@ class Minesweeper:
         if self.dark_mode:
             self.bg_color = "#2c2f33"
             self.button_bg_color = "#23272a"
-            self.button_active_bg = "#7289da"
+            self.button_active_bg = "#404EED"
             self.text_color = "#ffffff"
             self.reveal_color = "#36393f"
             self.mine_color = "#000000"
             self.flag_color = "#f39c12"
+            self.hover_color = "#404EED"
             self.style.configure("Vertical.TScrollbar",
                                 background=self.button_bg_color,
                                 troughcolor=self.bg_color,
@@ -105,17 +106,22 @@ class Minesweeper:
                     foreground=self.text_color,
                     indicatorbackground=self.button_bg_color)
             self.style.map("TMenubutton",
-                      background=[('active', self.button_active_bg)])
+                      background=[('active', self.button_active_bg)]),
+            self.style.map("TCheckbutton",
+                          background=[("active", self.bg_color)],
+                          indicatorcolor=[("selected", self.text_color)],
+                          indicatorbackground=[("selected", "#404EED")])
             
             
         else:
             self.bg_color = "#ffffff"
             self.button_bg_color = "#e0e0e0"
-            self.button_active_bg = "#e0e0e0"
+            self.button_active_bg = "#E1F5FE"
             self.text_color = "#000000"
             self.reveal_color = "#d0d0d0"
             self.mine_color = "#000000"
             self.flag_color = "#0000ff"
+            self.hover_color = "#E1F5FE"
             self.style.configure("Menu",
                         background=self.button_bg_color,
                         foreground=self.text_color,
@@ -135,7 +141,13 @@ class Minesweeper:
             self.style.map("TCheckbutton",
                           background=[("active", self.bg_color)],
                           indicatorcolor=[("selected", self.text_color)],
-                          indicatorbackground=[("selected", "#4682B4")])
+                          indicatorbackground=[("selected", "#E1F5FE")])
+        self.style.configure("TButton", 
+                        background=self.button_bg_color,
+                        foreground=self.text_color)
+        self.style.map("TButton",
+                      background=[('active', self.hover_color)],
+                      foreground=[('active', self.text_color)])
 
 
     def _configure_scrollbar_style(self):
@@ -367,7 +379,11 @@ class Minesweeper:
         # Оновлюємо ігрове поле
         for row in self.buttons:
             for btn in row:
-                btn.configure(bg=self.button_bg_color, fg=self.text_color)
+                btn.configure(
+                    bg=self.button_bg_color, 
+                    fg=self.text_color,
+                    activebackground=self.hover_color
+                )
 
         # Оновлюємо додаткові вікна
         for window in [self.history_window, self.info_window]:
@@ -430,14 +446,12 @@ class Minesweeper:
 
     def _update_difficulty_menu_style(self):
         """Оновлює стиль випадаючого меню рівнів складності"""
-        menu = self.difficulty_menu["menu"]
-        menu.configure(
-            bg=self.button_bg_color,
-            fg=self.text_color,
-            activebackground=self.button_active_bg,
-            activeforeground=self.text_color
-        )
-        self.difficulty_menu.configure(style="TMenubutton")
+        self.style.configure("TMenubutton",
+                            background=self.button_bg_color,
+                            foreground=self.text_color)
+        self.style.map("TMenubutton",
+                      background=[('active', self.hover_color)],
+                      foreground=[('active', self.text_color)])
     
 
     def _update_menu_colors(self):
@@ -582,9 +596,16 @@ class Minesweeper:
             row_buttons = []
             row_board = []
             for col in range(self.size):
-                btn = tk.Button(self.game_frame, width=button_size, height=button_size,
-                                command=lambda r=row, c=col: self.left_click(r, c),
-                                bg=self.button_bg_color, fg=self.text_color)
+                btn = tk.Button(
+                    self.game_frame, 
+                    width=button_size, 
+                    height=button_size,
+                    command=lambda r=row, c=col: self.left_click(r, c),
+                    bg=self.button_bg_color,
+                    fg=self.text_color,
+                    activebackground=self.hover_color,  # Додано колір наведення
+                    highlightthickness=0  # Видаляємо рамку фокусу
+                )
                 btn.bind("<Button-3>", lambda event, r=row, c=col: self.right_click(r, c))
                 btn.grid(row=row, column=col, padx=1, pady=1, sticky="nsew")
                 row_buttons.append(btn)
@@ -908,7 +929,6 @@ class Minesweeper:
 
         self.info_window.protocol("WM_DELETE_WINDOW", on_close)
 
-        # Решта коду створення інтерфейсу залишається незмінною
         main_frame = tk.Frame(self.info_window, bg=self.bg_color)
         main_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
@@ -918,7 +938,7 @@ class Minesweeper:
             text="Запит при першому кліку на міну",
             variable=self.dialog_var,
             command=self.toggle_dialog,
-            style='TCheckbutton'  # Додаємо явне вказівання стилю
+            style='TCheckbutton'
         )
         self.dialog_checkbox.pack(anchor='w', pady=(0, 10))
 
@@ -947,7 +967,6 @@ class Minesweeper:
         self._insert_info_text()
         self.info_text.config(state=tk.DISABLED)
 
-        # Додамо оновлення курсора
         self.info_text.configure(
             insertbackground=self.text_color,
             selectbackground=self.button_active_bg
