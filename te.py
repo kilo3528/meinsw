@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 import sys
 import json
+import time
 os.environ['LANG'] = 'uk_UA.UTF-8'
 import locale
 locale.setlocale(locale.LC_ALL, 'uk_UA')
@@ -73,6 +74,13 @@ class Minesweeper:
         self._update_difficulty_menu()
         self.create_db()
         self.setup_initial_state()
+        self.timer_enabled = False
+        self.remaining_time = 0
+        self.timer_window = None
+        self.timer_label = None
+        self.timer_id = None
+        self.timer_pos = {"x": 100, "y": 100}
+        self.timer_geometry = "150x80"  
         
         
         # 5. Зберегти налаштування лише після повної ініціалізації
@@ -328,43 +336,49 @@ class Minesweeper:
         
     def load_settings(self):
         """Завантажує налаштування зі збереженням українських символів."""
+        default_settings = {
+            "dark_mode": False,
+            "dialog_enabled": True,
+            "last_difficulty": "Легкий",
+            "timer_enabled": False,
+            "timer_pos": {"x": 100, "y": 100},
+            "timer_geometry": "150x80"
+        }
         try:
             with open(self.settings_file, "r", encoding='utf-8') as f:
-                settings = json.load(f)
-                self.dark_mode = settings.get("dark_mode", False)
-                self.dialog_enabled = settings.get("dialog_enabled", True)
-                # Безпечне отримання рівня складності
-                self.last_difficulty = settings.get("last_difficulty", "Легкий")
-                if self.last_difficulty not in ["Легкий", "Середній", "Важкий"]:
-                    self.last_difficulty = "Легкий"  # Значення за замовчуванням при помилці
-                    
+                saved_settings = json.load(f)
+                # М'яке оновлення налаштувань
+                self.dark_mode = saved_settings.get("dark_mode", default_settings["dark_mode"])
+                self.dialog_enabled = saved_settings.get("dialog_enabled", default_settings["dialog_enabled"])
+                self.last_difficulty = saved_settings.get("last_difficulty", default_settings["last_difficulty"])
+                self.timer_enabled = saved_settings.get("timer_enabled", default_settings["timer_enabled"])
+                self.timer_pos = saved_settings.get("timer_pos", default_settings["timer_pos"])
+                self.timer_geometry = saved_settings.get("timer_geometry", default_settings["timer_geometry"])
+                
         except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-            print()
-                #f"Помилка завантаження налаштувань: {e}"
-            self.dark_mode = False
-            self.dialog_enabled = True
-            self.last_difficulty = "Легкий"
+            print(f"Помилка завантаження налаштувань: {e}, використовуються значення за замовчуванням")
+            # Ініціалізація значень за замовчуванням
+            self.__dict__.update(default_settings)
             self.save_settings()
 
+
+            
+
     def save_settings(self):
-        """Зберігає налаштування з українським текстом."""
+        """Зберігає поточний стан всіх налаштувань"""
+        settings = {
+            "dark_mode": self.dark_mode,
+            "dialog_enabled": self.dialog_enabled,
+            "last_difficulty": self.difficulty_var.get(),
+            "timer_enabled": self.timer_enabled,
+            "timer_pos": self.timer_pos,
+            "timer_geometry": self.timer_geometry
+        }
         try:
             with open(self.settings_file, "w", encoding='utf-8') as f:
-                json.dump(
-                    {
-                        "dark_mode": self.dark_mode,
-                        "dialog_enabled": self.dialog_enabled,
-                        "last_difficulty": self.difficulty_var.get()
-                    },
-                    f,
-                    indent=4,
-                    ensure_ascii=False  # Вимкнути ASCII-кодування
-                )
-            print()
-                #"Налаштування успішно збережено!"
+                json.dump(settings, f, indent=4, ensure_ascii=False)
         except Exception as e:
-            print()
-                #f"Помилка збереження налаштувань: {e}"
+            print(f"Помилка збереження налаштувань: {e}")
 
     def toggle_theme(self):
         """Перемикає тему та оновлює всі елементи."""
@@ -397,6 +411,35 @@ class Minesweeper:
             self.update_colors()
             self.save_settings()
             self.restart_game(confirm=False)  # Відключаємо повторне підтвердження
+        if self.timer_window and self.timer_window.winfo_exists():
+            self.timer_window.configure(bg=self.bg_color)
+            self.timer_label.config(
+                bg=self.bg_color,
+                fg=self.text_color,
+                highlightbackground=self.button_bg_color
+            )
+    
+        self.save_settings()
+        self.restart_game(confirm=False)
+
+    def toggle_timer(self):
+        """Оновлена логіка перемикання таймера з коректним оновленням інтерфейсу"""
+        self.timer_enabled = not self.timer_enabled
+        if self.timer_enabled:
+            self.create_timer_window()
+            if self.game_active:
+                self.start_timer()
+        else:
+            self.stop_timer()
+            if self.timer_window:
+                self.timer_window.destroy()
+        
+        # Оновлення кнопки в реальному часі
+        if self.info_window and self.info_window.winfo_exists():
+            for widget in self.info_window.winfo_children():
+                if isinstance(widget, ttk.Button) and "таймер" in widget.cget("text").lower():
+                    widget.config(text="Вимкнути таймер" if self.timer_enabled else "Увімкнути таймер")
+        self.save_settings()
 
     def create_widgets(self):
         """Створює елементи інтерфейсу."""
@@ -443,6 +486,122 @@ class Minesweeper:
         self._update_menu_colors() 
         
         self.update_window_size()
+
+    def create_timer_window(self):
+        """Оновлений метод створення вікна з правильним позиціонуванням"""
+        if self.timer_window and self.timer_window.winfo_exists():
+            return
+
+        # Використовуємо збережену позицію
+        x = self.timer_pos.get("x", 100)
+        y = self.timer_pos.get("y", 100)
+        geometry_str = f"{self.timer_geometry}+{x}+{y}"
+        
+        self.timer_window = tk.Toplevel(self.root)
+        self.timer_window.title("Таймер")
+        self.timer_window.geometry(geometry_str)
+
+        self.timer_window.resizable(False, False)
+        self.timer_window.overrideredirect(1)
+        self.timer_window.attributes('-topmost', 1)
+        self.timer_window.configure(bg=self.bg_color)
+        
+        # Стилізація мітки
+        self.timer_label = tk.Label(
+            self.timer_window,
+            text="00:00",
+            font=("Arial", 24, "bold"),
+            bg=self.bg_color,
+            fg=self.text_color,
+            relief="ridge",
+            bd=3,
+            padx=10,
+            pady=5
+        )
+        self.timer_label.pack(expand=True)
+        
+        # Обробники пересування
+        self.timer_window.bind("<ButtonPress-1>", self.start_move)
+        self.timer_window.bind("<B1-Motion>", self.do_move)
+        self.timer_window.bind("<ButtonRelease-1>", self.save_position)
+
+
+    def save_position(self, event=None):
+        """Виправлений метод збереження позиції"""
+        if self.timer_window and self.timer_window.winfo_exists():
+            try:
+                geometry = self.timer_window.geometry()
+                parts = geometry.split('+')
+                if len(parts) >= 3:
+                    self.timer_geometry = parts[0]
+                    self.timer_pos = {
+                        "x": int(parts[-2]),
+                        "y": int(parts[-1])
+                    }
+                    self.save_settings()
+            except Exception as e:
+                print(f"Помилка збереження позиції: {e}")
+        
+    def start_move(self, event):
+        """Початок пересування вікна"""
+        self.timer_window._drag_data = {
+            "x": event.x_root,
+            "y": event.y_root,
+            "win_x": self.timer_window.winfo_x(),
+            "win_y": self.timer_window.winfo_y()
+        }
+
+    def do_move(self, event):
+        """Обробка пересування вікна"""
+        delta_x = event.x_root - self.timer_window._drag_data["x"]
+        delta_y = event.y_root - self.timer_window._drag_data["y"]
+        new_x = self.timer_window._drag_data["win_x"] + delta_x
+        new_y = self.timer_window._drag_data["win_y"] + delta_y
+        
+        # Обмеження в межах екрана
+        new_x = max(0, min(new_x, self.root.winfo_screenwidth() - self.timer_window.winfo_width()))
+        new_y = max(0, min(new_y, self.root.winfo_screenheight() - self.timer_window.winfo_height()))
+        
+        self.timer_window.geometry(f"+{new_x}+{new_y}")
+        self.save_position()  # Зберігаємо позицію під час перетягування
+
+
+    def start_timer(self):
+        if not self.timer_enabled or not self.game_active:
+            return
+            
+        difficulty_times = {
+            "Легкий": 300,
+            "Середній": 240,
+            "Важкий": 180
+        }
+        self.remaining_time = difficulty_times.get(self.difficulty_var.get(), 300)
+        self.update_timer()
+        self.timer_id = self.root.after(1000, self.timer_tick)
+
+    def timer_tick(self):
+        if self.game_active and self.remaining_time > 0:
+            self.remaining_time -= 1
+            self.update_timer()
+            if self.remaining_time <= 0:
+                self.game_over = True
+                self.show_custom_dialog("Час вийшов!", "Ви програли через закінчення часу!")
+                self.reveal_mines()
+                self.stop_timer()
+            else:
+                self.timer_id = self.root.after(1000, self.timer_tick)
+
+    def update_timer(self):
+        minutes = self.remaining_time // 60
+        seconds = self.remaining_time % 60
+        self.timer_label.config(text=f"{minutes:02}:{seconds:02}")
+
+    def stop_timer(self):
+        if self.timer_id:
+            self.root.after_cancel(self.timer_id)
+            self.timer_id = None
+
+    
 
     def _update_difficulty_menu_style(self):
         """Оновлює стиль випадаючого меню рівнів складності"""
@@ -553,28 +712,45 @@ class Minesweeper:
             self.conn.execute("INSERT INTO games (date, result, size, difficulty) VALUES (?, ?, ?, ?)", (date, result, self.size, difficulty))
 
     def start_game(self):
-        """Починає нову гру з повною переініціалізацією поля"""
-        self.restart_game(confirm=False)  # Перестворюємо поле
+        """Початок нової гри з перевіркою таймера"""
+        self.restart_game(confirm=False)
         self.game_active = True
         self.game_over = False
-        self.set_board_state("normal")  # Активуємо кнопки
+        self.set_board_state("normal")
+        
+        # Примусове оновлення таймера
+        if self.timer_enabled:
+            self.create_timer_window()
+            self.start_timer()
+            self.timer_window.attributes('-topmost', 1)
+            self.timer_window.lift()
 
     def restart_game(self, confirm=True):
+        """Перезапуск гри з повною перевіркою таймера"""
         if confirm and self.game_active and not self.confirm_action("restart"):
             return
-            
+        
+        # Зупиняємо гру та таймер
         self.game_active = False
         self.game_over = False
         self.first_click = True
         self.flagged.clear()
+        self.stop_timer()
         
-        # Повне оновлення кольорів перед створенням поля
+        # Переініціалізація гри
         self.init_colors()
         self.clear_game_frame()
         self.create_board()
         self.place_mines()
         self.update_numbers()
         self.set_board_state("disabled")
+        
+        # Якщо таймер був активний - перезапускаємо
+        if self.timer_enabled:
+            if self.timer_window:
+                self.timer_window.destroy()
+            self.create_timer_window()
+            self.start_timer()
 
         
     def clear_game_frame(self):
@@ -942,6 +1118,17 @@ class Minesweeper:
 
         main_frame = tk.Frame(self.info_window, bg=self.bg_color)
         main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+
+    
+        #Кнопка керування таймером    
+        timer_btn_text = "Вимкнути таймер" if self.timer_enabled else "Увімкнути таймер"
+        self.timer_toggle_btn = ttk.Button(
+            main_frame,
+            text=timer_btn_text,
+            command=self.toggle_timer,
+            style='TButton'
+        )
+        self.timer_toggle_btn.pack(anchor='w', pady=(0, 10))
 
         # Чекбокс
         self.dialog_checkbox = ttk.Checkbutton(
