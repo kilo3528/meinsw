@@ -405,7 +405,7 @@ class Minesweeper:
         self.menu_frame.pack(pady=10, anchor='w')
         
         # Кнопки меню
-        self.start_button = ttk.Button(self.menu_frame, text="Почати гру", command=self.restart_game)
+        self.start_button = ttk.Button(self.menu_frame, text="Почати гру", command=self.start_game)
         self.start_button.grid(row=0, column=0, padx=5, pady=5, sticky="w")
         
         self.toggle_theme_button = ttk.Button(self.menu_frame, text="Темна тема", command=self.toggle_theme)
@@ -553,30 +553,28 @@ class Minesweeper:
             self.conn.execute("INSERT INTO games (date, result, size, difficulty) VALUES (?, ?, ?, ?)", (date, result, self.size, difficulty))
 
     def start_game(self):
-        """Розпочинає нову гру."""
-        self.clear_game_frame()
-        self.create_board()
-        self.place_mines()
-        self.update_numbers()
-        self.set_board_state("normal")
+        """Починає нову гру з повною переініціалізацією поля"""
+        self.restart_game(confirm=False)  # Перестворюємо поле
+        self.game_active = True
+        self.game_over = False
+        self.set_board_state("normal")  # Активуємо кнопки
 
     def restart_game(self, confirm=True):
-        """Перезапускає гру з опціональним підтвердженням"""
-        # Змінюємо умову перевірки на наявність активної гри
         if confirm and self.game_active and not self.confirm_action("restart"):
             return
             
-        # Решта коду перезапуску
-        self.game_active = True 
+        self.game_active = False
         self.game_over = False
-        self.game_active = True  # Встановлюємо прапорець активної гри
         self.first_click = True
         self.flagged.clear()
+        
+        # Повне оновлення кольорів перед створенням поля
+        self.init_colors()
         self.clear_game_frame()
         self.create_board()
         self.place_mines()
         self.update_numbers()
-        self.set_board_state("normal")
+        self.set_board_state("disabled")
 
         
     def clear_game_frame(self):
@@ -589,22 +587,22 @@ class Minesweeper:
         self.board = []
 
     def create_board(self):
-        """Створює поле гри з динамічним розміром клітинок відповідно до рівня складності."""
-        button_size = 40 - (self.size - 8) * 4  # Динамічний розмір кнопок
-
+        """Створює поле з оновленими кольорами"""
+        button_size = 40 - (self.size - 8) * 4
+        
         for row in range(self.size):
             row_buttons = []
             row_board = []
             for col in range(self.size):
                 btn = tk.Button(
-                    self.game_frame, 
-                    width=button_size, 
+                    self.game_frame,
+                    width=button_size,
                     height=button_size,
                     command=lambda r=row, c=col: self.left_click(r, c),
-                    bg=self.button_bg_color,
+                    bg=self.button_bg_color,  # Використовуємо актуальні кольори
                     fg=self.text_color,
-                    activebackground=self.hover_color,  # Додано колір наведення
-                    highlightthickness=0  # Видаляємо рамку фокусу
+                    activebackground=self.hover_color,
+                    highlightthickness=0
                 )
                 btn.bind("<Button-3>", lambda event, r=row, c=col: self.right_click(r, c))
                 btn.grid(row=row, column=col, padx=1, pady=1, sticky="nsew")
@@ -705,6 +703,8 @@ class Minesweeper:
     
     def left_click(self, row, col):
         """Обробляє лівий клік на клітинці."""
+        if not self.game_active:  
+            return
         if not self.game_active:
             self.game_active = True 
         if self.game_over or (row, col) in self.flagged:
@@ -729,6 +729,8 @@ class Minesweeper:
                     self.game_over = True
                     self.save_game("Програв")
                     self.show_custom_dialog("Гра завершена", "Ви програли!")
+                    self.game_active = False
+                    self.set_board_state("disabled")
                     return
             else:
                 # Якщо діалог вимкнений або це не перший клік – одразу програємо
@@ -737,6 +739,8 @@ class Minesweeper:
                 self.game_over = True
                 self.save_game("Програв")
                 self.show_custom_dialog("Гра завершена", "Ви програли!")
+                self.game_active = False
+                self.set_board_state("disabled")
                 return
 
         # Якщо це не міна, відкриваємо клітинку
@@ -750,6 +754,8 @@ class Minesweeper:
             self.game_over = True
             self.save_game("Виграв")
             messagebox.showinfo("Гра завершена", "Ви виграли!")
+            self.game_active = False
+            self.set_board_state("disabled")
 
     def reset_game(self):
         """Скидає гру для нового раунду."""
@@ -798,6 +804,11 @@ class Minesweeper:
         correct_flags = all(self.board[r][c] == 'M' for r, c in self.flagged)
         all_revealed = all(self.buttons[r][c]['state'] == 'disabled' for r in range(self.size) for c in range(self.size) if self.board[r][c] != 'M')
         return correct_flags and all_revealed
+        if correct_flags and all_revealed:
+            self.game_active = False
+            self.set_board_state("disabled")
+            return True
+        return False
 
     def set_difficulty(self, selected_difficulty):
         """Обробляє зміну рівня складності з підтвердженням"""
