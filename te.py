@@ -39,12 +39,21 @@ class Minesweeper:
         self.last_difficulty = "Легкий"  # Значення за замовчуванням
         
         # 1. Завантажити налаштування ПЕРШИМ
+        self.timer_window = None
+        self.timer_label = None
+        self.timer_id = None
+        self.timer_pos = {"x": 100, "y": 100}
+        self.timer_geometry = "150x80"
         self.load_settings()
-        
+        self.timer_enabled = False
+        if self.timer_enabled:
+            self.create_timer_window()
+            if self.game_active:
+                self.start_timer()
         # 2. Ініціалізація Tkinter змінних ПОСЛЯ завантаження налаштувань
         self.dialog_var = tk.BooleanVar(value=self.dialog_enabled)
         self.difficulty_var = tk.StringVar(value=self.last_difficulty)
-
+        
         # 3. Встановити параметри гри
         difficulty_settings = {
             "Легкий": (10, 10),
@@ -54,6 +63,7 @@ class Minesweeper:
         self.size, self.mines = difficulty_settings[self.last_difficulty]
 
         # 4. Решта ініціалізацій
+        self.timer_window = None
         self.difficulty_menu = None
         self.difficulty_var.set(self.last_difficulty)
         self.game_active = False
@@ -74,13 +84,7 @@ class Minesweeper:
         self._update_difficulty_menu()
         self.create_db()
         self.setup_initial_state()
-        self.timer_enabled = False
         self.remaining_time = 0
-        self.timer_window = None
-        self.timer_label = None
-        self.timer_id = None
-        self.timer_pos = {"x": 100, "y": 100}
-        self.timer_geometry = "150x80"  
         
         
         # 5. Зберегти налаштування лише після повної ініціалізації
@@ -295,6 +299,9 @@ class Minesweeper:
         x = root_x + (root_width - dialog_width) // 2
         y = root_y + (root_height - dialog_height) // 2
         dialog.geometry(f"+{x}+{y}")
+        dialog.attributes('-topmost', 1)
+        dialog.grab_set()  # Блокує інші вікна
+        dialog.protocol("WM_DELETE_WINDOW", lambda: None)  # Забороняємо закриття
 
         # Заголовок
         lbl_title = tk.Label(
@@ -332,8 +339,6 @@ class Minesweeper:
 
     
         
-    
-        
     def load_settings(self):
         """Завантажує налаштування зі збереженням українських символів."""
         default_settings = {
@@ -367,6 +372,7 @@ class Minesweeper:
     def save_settings(self):
         """Зберігає поточний стан всіх налаштувань"""
         settings = {
+            # Додаємо всі необхідні параметри
             "dark_mode": self.dark_mode,
             "dialog_enabled": self.dialog_enabled,
             "last_difficulty": self.difficulty_var.get(),
@@ -425,6 +431,7 @@ class Minesweeper:
     def toggle_timer(self):
         """Оновлена логіка перемикання таймера з коректним оновленням інтерфейсу"""
         self.timer_enabled = not self.timer_enabled
+    
         if self.timer_enabled:
             self.create_timer_window()
             if self.game_active:
@@ -440,6 +447,14 @@ class Minesweeper:
                 if isinstance(widget, ttk.Button) and "таймер" in widget.cget("text").lower():
                     widget.config(text="Вимкнути таймер" if self.timer_enabled else "Увімкнути таймер")
         self.save_settings()
+        self.update_timer_button()
+
+    def update_timer_button(self):
+        """Оновлює текст кнопки в інфо-вікні"""
+        if hasattr(self, 'timer_toggle_btn'):
+            self.timer_toggle_btn.config(
+                text="Вимкнути таймер" if self.timer_enabled else "Увімкнути таймер"
+            )
 
     def create_widgets(self):
         """Створює елементи інтерфейсу."""
@@ -488,10 +503,11 @@ class Minesweeper:
         self.update_window_size()
 
     def create_timer_window(self):
-        """Оновлений метод створення вікна з правильним позиціонуванням"""
-        if self.timer_window and self.timer_window.winfo_exists():
-            return
-
+        """Створення стилізованого вікна таймера"""
+        if self.timer_window is not None:  # Перевіряємо лише наявність об'єкта
+            if self.timer_window.winfo_exists():  # Перевіряємо існування вікна
+                return
+        
         # Використовуємо збережену позицію
         x = self.timer_pos.get("x", 100)
         y = self.timer_pos.get("y", 100)
@@ -500,7 +516,6 @@ class Minesweeper:
         self.timer_window = tk.Toplevel(self.root)
         self.timer_window.title("Таймер")
         self.timer_window.geometry(geometry_str)
-
         self.timer_window.resizable(False, False)
         self.timer_window.overrideredirect(1)
         self.timer_window.attributes('-topmost', 1)
@@ -527,7 +542,7 @@ class Minesweeper:
 
 
     def save_position(self, event=None):
-        """Виправлений метод збереження позиції"""
+        """Зберігає позицію таймера з перевіркою існування вікна"""
         if self.timer_window and self.timer_window.winfo_exists():
             try:
                 geometry = self.timer_window.geometry()
@@ -538,6 +553,7 @@ class Minesweeper:
                         "x": int(parts[-2]),
                         "y": int(parts[-1])
                     }
+                    # Примусове збереження при кожній зміні
                     self.save_settings()
             except Exception as e:
                 print(f"Помилка збереження позиції: {e}")
@@ -580,14 +596,16 @@ class Minesweeper:
         self.timer_id = self.root.after(1000, self.timer_tick)
 
     def timer_tick(self):
+        """Оновлений метод оновлення таймера"""
         if self.game_active and self.remaining_time > 0:
             self.remaining_time -= 1
             self.update_timer()
             if self.remaining_time <= 0:
                 self.game_over = True
+                self.stop_timer()
                 self.show_custom_dialog("Час вийшов!", "Ви програли через закінчення часу!")
                 self.reveal_mines()
-                self.stop_timer()
+                self.set_board_state("disabled")
             else:
                 self.timer_id = self.root.after(1000, self.timer_tick)
 
@@ -976,11 +994,18 @@ class Minesweeper:
             self.flagged.add((row, col))
 
     def check_win(self):
-        """Перевіряє, чи виграв гравець (всі міни відмічені флажками)."""
+        """Перевірка на перемогу з правильним завершенням таймера"""
         correct_flags = all(self.board[r][c] == 'M' for r, c in self.flagged)
-        all_revealed = all(self.buttons[r][c]['state'] == 'disabled' for r in range(self.size) for c in range(self.size) if self.board[r][c] != 'M')
-        return correct_flags and all_revealed
+        all_revealed = all(self.buttons[r][c]['state'] == 'disabled' 
+                       for r in range(self.size) 
+                       for c in range(self.size) 
+                       if self.board[r][c] != 'M')
+        
         if correct_flags and all_revealed:
+            self.game_over = True
+            self.stop_timer()
+            self.save_game("Виграв")
+            self.show_custom_dialog("Гра завершена", "Ви виграли!")
             self.game_active = False
             self.set_board_state("disabled")
             return True
@@ -1086,11 +1111,27 @@ class Minesweeper:
         
 
         # Обробник закриття вікна
-        def on_close():
-            self.history_window.destroy()
-            self.history_window = None
-
-        self.history_window.protocol("WM_DELETE_WINDOW", on_close)
+    def on_close(self):
+        """Обробник закриття головного вікна"""
+        # Оновлюємо позицію таймера перед збереженням
+        if self.timer_window and self.timer_window.winfo_exists():
+            self.save_position()
+        
+        # Зберігаємо всі налаштування
+        self.save_settings()
+        
+        # Зупиняємо таймер
+        self.stop_timer()
+        
+        # Закриваємо з'єднання з БД
+        if hasattr(self, 'conn') and self.conn:
+            try:
+                self.conn.close()
+            except Exception as e:
+                print(f"Помилка закриття БД: {e}")
+        
+        # Закриваємо вікно
+        self.root.destroy()
 
 
     def toggle_dialog(self):
