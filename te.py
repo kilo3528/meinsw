@@ -29,65 +29,64 @@ db_path = os.path.join(folder, filename)
 os.makedirs(folder, exist_ok=True)
 
 class Minesweeper:
-    def __init__(self, root, size=10, mines=10):
+    def __init__(self, root, size=10, mines=10): 
         self.root = root
         self.settings_file = "settings.json"
-        
+        self.db_path = db_path
+
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+
         # Ініціалізація тимчасових значень
         self.dark_mode = False
         self.dialog_enabled = True
-        self.last_difficulty = "Легкий"  # Значення за замовчуванням
-        
-        # 1. Завантажити налаштування ПЕРШИМ
+        self.last_difficulty = "Легкий"
+        self.game_active = False
+        self.game_over = False
+        self.first_click = True
+        self.flagged = set()
+        self.history_window = None
+        self.info_window = None
+        self.buttons = []
+        self.board = []
         self.timer_window = None
         self.timer_label = None
         self.timer_id = None
         self.timer_pos = {"x": 100, "y": 100}
         self.timer_geometry = "150x80"
+        self.remaining_time = 0
+        
         self.load_settings()
-        self.timer_enabled = False
-        if self.timer_enabled:
-            self.create_timer_window()
-            if self.game_active:
-                self.start_timer()
-        # 2. Ініціалізація Tkinter змінних ПОСЛЯ завантаження налаштувань
+        self.init_colors()
+        
+        # Ініціалізація змінних Tkinter після завантаження налаштувань
         self.dialog_var = tk.BooleanVar(value=self.dialog_enabled)
         self.difficulty_var = tk.StringVar(value=self.last_difficulty)
         
-        # 3. Встановити параметри гри
+        # Встановлення параметрів гри
         difficulty_settings = {
             "Легкий": (10, 10),
             "Середній": (12, 20),
             "Важкий": (16, 40)
         }
-        self.size, self.mines = difficulty_settings[self.last_difficulty]
-
-        # 4. Решта ініціалізацій
-        self.timer_window = None
-        self.difficulty_menu = None
-        self.difficulty_var.set(self.last_difficulty)
-        self.game_active = False
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
-        self.buttons = []
-        self.board = []
-        self.game_over = False
-        self.flagged = set()
-        self.first_click = True
-        self.history_window = None
-        self.info_window = None
-        self.init_colors()
+        self.size, self.mines = difficulty_settings.get(self.last_difficulty, (10, 10))
+        
         self.create_widgets()
         self.update_colors()
-        self.db_path = db_path
+        
+        # База даних
         self.conn = sqlite3.connect(self.db_path)
-        self._update_difficulty_menu()
         self.create_db()
+        self._update_difficulty_menu()
         self.setup_initial_state()
-        self.remaining_time = 0
         
+        # Таймер
+        if getattr(self, 'timer_enabled', False):
+            self.create_timer_window()
+            if self.game_active:
+                self.start_timer()
         
-        # 5. Зберегти налаштування лише після повної ініціалізації
+        # Збереження налаштувань після повної ініціалізації
         self.save_settings()
 
     def init_colors(self):
@@ -724,10 +723,14 @@ class Minesweeper:
 
     def save_game(self, result):
         """Зберігає результат гри в базу даних."""
-        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        difficulty = self.difficulty_var.get()
-        with self.conn:
-            self.conn.execute("INSERT INTO games (date, result, size, difficulty) VALUES (?, ?, ?, ?)", (date, result, self.size, difficulty))
+        if self.conn:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO games (date, result, difficulty) VALUES (datetime('now'), ?, ?)", 
+                    (result, self.difficulty_var.get())  # Use actual difficulty from game state
+                )
+            if self.history_window and self.history_window.winfo_exists():
+                self.load_history_data()
 
     def start_game(self):
         """Початок нової гри з перевіркою таймера"""
@@ -921,20 +924,24 @@ class Minesweeper:
                     # Гравець обрав програти
                     self.reveal_mines()
                     self.game_over = True
+                    self.stop_timer()
                     self.save_game("Програв")
                     self.show_custom_dialog("Гра завершена", "Ви програли!")
                     self.game_active = False
                     self.set_board_state("disabled")
+                    #self.stop_timer()  # Додано зупинку таймера
                     return
             else:
                 # Якщо діалог вимкнений або це не перший клік – одразу програємо
                 self.buttons[row][col].config(text="💣", bg="red", fg=self.mine_color, state="disabled")
                 self.reveal_mines()
                 self.game_over = True
+                self.stop_timer()
                 self.save_game("Програв")
                 self.show_custom_dialog("Гра завершена", "Ви програли!")
                 self.game_active = False
                 self.set_board_state("disabled")
+                #self.stop_timer()  # Додано зупинку таймера
                 return
 
         # Якщо це не міна, відкриваємо клітинку
@@ -946,6 +953,7 @@ class Minesweeper:
         # Перевірка на перемогу
         if self.check_win():
             self.game_over = True
+            self.stop_timer()
             self.save_game("Виграв")
             messagebox.showinfo("Гра завершена", "Ви виграли!")
             self.game_active = False
@@ -1068,6 +1076,7 @@ class Minesweeper:
         """Показує історію ігор з однаковим фоном."""
         if self.history_window and self.history_window.winfo_exists():
             self.history_window.lift()
+            self.load_history_data()  # Оновлюємо дані при повторному відкритті
             return
 
         self.history_window = tk.Toplevel(self.root)
@@ -1081,34 +1090,27 @@ class Minesweeper:
         main_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
         # Список історії
-        history_listbox = tk.Listbox(
+        self.history_listbox = tk.Listbox(
             main_frame,
             bg=self.bg_color,
             fg=self.text_color,
             borderwidth=0,
             highlightthickness=0,
-            font=("Arial", 10)  # Додано закриваючу дужку
+            font=("Arial", 10)
         )
-        history_listbox.pack(side='left', fill='both', expand=True)
+        self.history_listbox.pack(side='left', fill='both', expand=True)
 
         # Скролбар
         scrollbar = ttk.Scrollbar(
             main_frame,
             orient="vertical",
-            style="Vertical.TScrollbar",
-            command=history_listbox.yview
+            command=self.history_listbox.yview
         )
         scrollbar.pack(side='right', fill='y')
-        history_listbox.config(yscrollcommand=scrollbar.set)
+        self.history_listbox.config(yscrollcommand=scrollbar.set)
 
-        # Заповнення даними
-        with self.conn:
-            cursor = self.conn.execute("SELECT date, result, difficulty FROM games ORDER BY id DESC")
-            rows = cursor.fetchall()
+        self.load_history_data()  # Завантажуємо історію при відкритті
 
-        for row in rows:
-            history_listbox.insert(tk.END, f"Дата: {row[0]}, Результат: {row[1]}, Складність: {row[2]}")
-        
 
         # Обробник закриття вікна
     def on_close(self):
@@ -1132,6 +1134,18 @@ class Minesweeper:
         
         # Закриваємо вікно
         self.root.destroy()
+        
+
+    def load_history_data(self):
+        """Завантажує дані історії з БД у список."""
+        if self.history_listbox:
+            self.history_listbox.delete(0, tk.END)
+            if self.conn:
+                with self.conn:
+                    cursor = self.conn.execute("SELECT date, result, difficulty FROM games ORDER BY id DESC")
+                    rows = cursor.fetchall()
+                for row in rows:
+                    self.history_listbox.insert(tk.END, f"Дата: {row[0]}, Результат: {row[1]}, Складність: {row[2]}")
 
 
     def toggle_dialog(self):
