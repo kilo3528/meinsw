@@ -29,7 +29,8 @@ db_path = os.path.join(folder, filename)
 os.makedirs(folder, exist_ok=True)
 
 class Minesweeper:
-    def __init__(self, root, size=10, mines=10): 
+    def __init__(self, root, size=10, mines=10):
+        self.difficulty_var = tk.StringVar()
         self.root = root
         self.settings_file = "settings.json"
         self.db_path = db_path
@@ -38,6 +39,8 @@ class Minesweeper:
         self.style.theme_use('clam')
 
         # Ініціалізація тимчасових значень
+        self.debug_mode = True  # Змініть на False для вимкнення
+        self.mine_color_enabled = False
         self.dark_mode = False
         self.dialog_enabled = True
         self.last_difficulty = "Легкий"
@@ -62,6 +65,7 @@ class Minesweeper:
         # Ініціалізація змінних Tkinter після завантаження налаштувань
         self.dialog_var = tk.BooleanVar(value=self.dialog_enabled)
         self.difficulty_var = tk.StringVar(value=self.last_difficulty)
+        self.mine_color_var = tk.BooleanVar(value=self.mine_color_enabled)
         
         # Встановлення параметрів гри
         difficulty_settings = {
@@ -154,11 +158,20 @@ class Minesweeper:
                           indicatorcolor=[("selected", self.text_color)],
                           indicatorbackground=[("selected", "#E1F5FE")])
         self.style.configure("TButton", 
-                        background=self.button_bg_color,
-                        foreground=self.text_color)
+                   background=self.button_bg_color,
+                   foreground=self.text_color,
+                   borderwidth=1)
         self.style.map("TButton",
                       background=[('active', self.hover_color)],
                       foreground=[('active', self.text_color)])
+        self.style.configure("TimerOn.TButton", 
+                       background=self.bg_color,
+                       foreground=self.text_color,
+                       borderwidth=1)
+        self.style.configure("TimerOff.TButton", 
+                           background=self.bg_color,
+                           foreground=self.text_color,
+                           borderwidth=1)
 
 
     def _configure_scrollbar_style(self):
@@ -216,10 +229,20 @@ class Minesweeper:
         theme_text = "Світла тема" if self.dark_mode else "Темна тема"
         self.toggle_theme_button.config(text=theme_text)
 
+        for row in self.buttons:
+            for btn in row:
+                current_text = btn.cget("text")
+                btn.config(
+                    bg=self.button_bg_color,
+                    fg=self.text_color,
+                    activebackground=self.hover_color,
+                    disabledforeground=self.flag_color if current_text == "🚩" else self.text_color
+                )
+
         
     def confirm_action(self, action):
         """Створює діалогове вікно для підтвердження дії."""
-        if not self.game_active:  # Якщо гра не активна - не викликаємо діалог
+        if not self.game_active or self.game_over:  # Якщо гра не активна - не викликаємо діалог
             return True
         if self.game_over:  # Якщо гра вже завершена, не викликаємо діалог
             return True
@@ -245,11 +268,19 @@ class Minesweeper:
 
         result = {"choice": False}
 
-        label_text = "Ви впевнені, що хочете перезапустити гру?\nНезбережені дані буде втрачено!"
+        #label_text = "Ви впевнені, що хочете перезапустити гру?\nНезбережені дані буде втрачено!"
         if action == "theme":
             label_text = "Ви впевнені, що хочете змінити тему?\nПоточна гра буде перезапущена!"
+            self.stop_timer()
         elif action == "difficulty":
             label_text = "Ви впевнені, що хочете змінити рівень складності?\nПоточна гра буде перезапущена!"
+            self.stop_timer()
+        elif action == "timer":
+            label_text = "Ви впевнені, що хочете вимкнути таймер?\nПоточна гра продовжиться без таймера!"
+            self.stop_timer()
+        elif action == "restart":
+            label_text = "Ви впевнені, що хочете перезапустити гру?\nНезбережені дані буде втрачено!"
+            self.stop_timer()
 
         label = tk.Label(dialog, text=label_text, bg=self.bg_color, fg=self.text_color)
         label.pack(pady=10)
@@ -257,10 +288,11 @@ class Minesweeper:
         def on_confirm():
             result["choice"] = True
             dialog.destroy()
-
+            
         def on_cancel():
             result["choice"] = False
             dialog.destroy()
+            self.continue_timer()
 
         btn_frame = tk.Frame(dialog, bg=self.bg_color)
         btn_frame.pack(pady=10)
@@ -346,25 +378,44 @@ class Minesweeper:
             "last_difficulty": "Легкий",
             "timer_enabled": False,
             "timer_pos": {"x": 100, "y": 100},
-            "timer_geometry": "150x80"
+            "timer_geometry": "150x80",
+            "mine_color_enabled": False,
+            "debug_mode": False
         }
         try:
             with open(self.settings_file, "r", encoding='utf-8') as f:
                 saved_settings = json.load(f)
                 # М'яке оновлення налаштувань
+                self.debug_mode = saved_settings.get("debug_mode", default_settings["debug_mode"])
                 self.dark_mode = saved_settings.get("dark_mode", default_settings["dark_mode"])
                 self.dialog_enabled = saved_settings.get("dialog_enabled", default_settings["dialog_enabled"])
                 self.last_difficulty = saved_settings.get("last_difficulty", default_settings["last_difficulty"])
                 self.timer_enabled = saved_settings.get("timer_enabled", default_settings["timer_enabled"])
                 self.timer_pos = saved_settings.get("timer_pos", default_settings["timer_pos"])
                 self.timer_geometry = saved_settings.get("timer_geometry", default_settings["timer_geometry"])
+                self.debug_mode = saved_settings.get("debug_mode", default_settings["debug_mode"])
+                self.mine_color_enabled = saved_settings.get("mine_color_enabled", default_settings["mine_color_enabled"])
+            if hasattr(self, 'mine_color_var'):
+                self.mine_color_var.set(self.mine_color_enabled)  # Синхронізуємо Tkinter-змінну
                 
         except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
             print(f"Помилка завантаження налаштувань: {e}, використовуються значення за замовчуванням")
-            # Ініціалізація значень за замовчуванням
             self.__dict__.update(default_settings)
             self.save_settings()
-
+            
+    def toggle_mine_color(self):
+        """Перемикає та зберігає стан підсвітки мін"""
+        self.mine_color_enabled = not self.mine_color_enabled
+        self.mine_color_var.set(self.mine_color_enabled)  # Оновлюємо Tkinter-змінну
+        self.save_settings()
+        
+        # Оновлюємо відображення мін
+        if self.game_active:
+            for row in range(self.size):
+                for col in range(self.size):
+                    if self.board[row][col] == 'M' and self.buttons[row][col]['state'] == 'disabled':
+                        bg_color = "red" if self.mine_color_enabled else self.button_bg_color
+                        self.buttons[row][col].config(bg=bg_color)
 
             
 
@@ -377,7 +428,9 @@ class Minesweeper:
             "last_difficulty": self.difficulty_var.get(),
             "timer_enabled": self.timer_enabled,
             "timer_pos": self.timer_pos,
-            "timer_geometry": self.timer_geometry
+            "timer_geometry": self.timer_geometry,
+            "mine_color_enabled": self.mine_color_enabled,
+            "debug_mode": self.debug_mode
         }
         try:
             with open(self.settings_file, "w", encoding='utf-8') as f:
@@ -428,32 +481,42 @@ class Minesweeper:
         self.restart_game(confirm=False)
 
     def toggle_timer(self):
-        """Оновлена логіка перемикання таймера з коректним оновленням інтерфейсу"""
+        """Обробник перемикання таймера з виправленнями"""
+        # Видаляємо перевірку на активність гри
+        if not self.confirm_action("timer"):
+            return
+        
         self.timer_enabled = not self.timer_enabled
-    
+        
         if self.timer_enabled:
-            self.create_timer_window()
-            if self.game_active:
+            if not self.timer_window or not self.timer_window.winfo_exists():
+                self.create_timer_window()
+            if self.game_active:  # Запускаємо тільки якщо гра активна
                 self.start_timer()
         else:
             self.stop_timer()
             if self.timer_window:
                 self.timer_window.destroy()
+                self.timer_window = None
         
-        # Оновлення кнопки в реальному часі
-        if self.info_window and self.info_window.winfo_exists():
-            for widget in self.info_window.winfo_children():
-                if isinstance(widget, ttk.Button) and "таймер" in widget.cget("text").lower():
-                    widget.config(text="Вимкнути таймер" if self.timer_enabled else "Увімкнути таймер")
-        self.save_settings()
+        # Примусове оновлення інтерфейсу
         self.update_timer_button()
+        self.save_settings()
 
     def update_timer_button(self):
-        """Оновлює текст кнопки в інфо-вікні"""
-        if hasattr(self, 'timer_toggle_btn'):
-            self.timer_toggle_btn.config(
-                text="Вимкнути таймер" if self.timer_enabled else "Увімкнути таймер"
-            )
+        """Updates the timer button text if the widget exists."""
+        if hasattr(self, 'timer_toggle_btn') and self.timer_toggle_btn.winfo_exists():
+            new_text = "Вимкнути таймер" if self.timer_enabled else "Увімкнути таймер"
+            self.timer_toggle_btn.config(text=new_text)
+            
+            # Використовуємо стилі замість прямого встановлення кольорів
+            style_name = "TimerOn.TButton" if self.timer_enabled else "TimerOff.TButton"
+            self.style.configure(style_name, 
+                               background=self.bg_color if self.timer_enabled else self.bg_color,
+                               foreground=self.text_color)
+            self.timer_toggle_btn.config(style=style_name)
+
+            
 
     def create_widgets(self):
         """Створює елементи інтерфейсу."""
@@ -582,18 +645,18 @@ class Minesweeper:
 
 
     def start_timer(self):
-        if not self.timer_enabled or not self.game_active:
-            return
+        """Запуск таймера з виправленнями"""
+        if self.timer_enabled and self.game_active:
+            difficulty_times = {
+                "Легкий": 300,
+                "Середній": 240,
+                "Важкий": 180
+            }
+            self.remaining_time = difficulty_times.get(self.difficulty_var.get(), 300)
+            self.stop_timer()  # Скидаємо попередній таймер
+            self.update_timer()
+            self.timer_id = self.root.after(1000, self.timer_tick)
             
-        difficulty_times = {
-            "Легкий": 300,
-            "Середній": 240,
-            "Важкий": 180
-        }
-        self.remaining_time = difficulty_times.get(self.difficulty_var.get(), 300)
-        self.update_timer()
-        self.timer_id = self.root.after(1000, self.timer_tick)
-
     def timer_tick(self):
         """Оновлений метод оновлення таймера"""
         if self.game_active and self.remaining_time > 0:
@@ -617,6 +680,11 @@ class Minesweeper:
         if self.timer_id:
             self.root.after_cancel(self.timer_id)
             self.timer_id = None
+
+    def continue_timer(self):
+        """Продовження таймера з останнім значенням залишкового часу"""
+        if self.game_active and self.remaining_time > 0:
+            self.timer_id = self.root.after(1000, self.timer_tick)
 
     
 
@@ -683,11 +751,28 @@ class Minesweeper:
         """Очищає область гри і створює нову гру."""
         self.game_active = False
         self.clear_game_frame()
-        self.create_board()
+        
+        # Ініціалізація поля
+        self.board = [[0 for _ in range(self.size)] for _ in range(self.size)]
         self.place_mines()
+        
+        # Створюємо кнопки
+        self.create_board()
         self.update_numbers()
+        
+        # Оновлюємо кольори для режиму налагодження
+        if self.debug_mode:
+            for row in range(self.size):
+                for col in range(self.size):
+                    if self.board[row][col] == 'M':
+                        self.buttons[row][col].config(
+                            bg="#8B4513",
+                            text="💣",
+                            state="disabled" if not self.game_active else "normal"
+                        )
+        
         self.set_board_state("disabled")
-        self.game_active = False  # Вимкнення прапорця активної гри
+        self.game_active = False
 
     def update_button_styles(self):
         """Оновлює стиль кнопок у меню."""
@@ -733,45 +818,54 @@ class Minesweeper:
                 self.load_history_data()
 
     def start_game(self):
-        """Початок нової гри з перевіркою таймера"""
-        self.restart_game(confirm=False)
+        """Початок нової гри з перевіркою підтвердження"""
+        # Викликаємо перезапуск з підтвердженням, якщо гра активна
+        if not self.restart_game(confirm=self.game_active):
+            return
+        
+        # Ініціалізація стану гри
         self.game_active = True
         self.game_over = False
         self.set_board_state("normal")
         
-        # Примусове оновлення таймера
+        # Обробка таймера
         if self.timer_enabled:
             self.create_timer_window()
             self.start_timer()
-            self.timer_window.attributes('-topmost', 1)
             self.timer_window.lift()
 
     def restart_game(self, confirm=True):
-        """Перезапуск гри з повною перевіркою таймера"""
-        if confirm and self.game_active and not self.confirm_action("restart"):
-            return
+        """Перезапускає гру з підтвердженням"""
+        if confirm and self.game_active:
+            if not self.confirm_action("restart"):
+                return False
         
-        # Зупиняємо гру та таймер
+        # Змінено порядок дій:
         self.game_active = False
         self.game_over = False
         self.first_click = True
         self.flagged.clear()
         self.stop_timer()
         
-        # Переініціалізація гри
+        # Спочатку оновлюємо дошку
+        self.board = [[0 for _ in range(self.size)] for _ in range(self.size)]
+        self.place_mines()  # Спочатку розміщуємо міни
+        
+        # Потім створюємо кнопки
         self.init_colors()
         self.clear_game_frame()
         self.create_board()
-        self.place_mines()
         self.update_numbers()
         self.set_board_state("disabled")
         
-        # Якщо таймер був активний - перезапускаємо
+        # Перезапуск таймера
         if self.timer_enabled:
             if self.timer_window:
                 self.timer_window.destroy()
             self.create_timer_window()
             self.start_timer()
+        
+        return True
 
         
     def clear_game_frame(self):
@@ -786,58 +880,85 @@ class Minesweeper:
     def create_board(self):
         """Створює поле з оновленими кольорами"""
         button_size = 40 - (self.size - 8) * 4
+        self.buttons = []
         
         for row in range(self.size):
             row_buttons = []
-            row_board = []
             for col in range(self.size):
+                # Визначаємо стиль для кнопок
+                bg_color = self.button_bg_color
+                text = ""
+                
+                # Якщо режим налагодження увімкнено і це міна
+                if self.debug_mode and self.board[row][col] == 'M':
+                    bg_color = "#8B4513"  # Коричневий колір
+                    text = "💣"  # Додаємо іконку міни
+                
                 btn = tk.Button(
                     self.game_frame,
+                    text=text,
                     width=button_size,
                     height=button_size,
-                    command=lambda r=row, c=col: self.left_click(r, c),
-                    bg=self.button_bg_color,  # Використовуємо актуальні кольори
+                    bg=bg_color,
                     fg=self.text_color,
                     activebackground=self.hover_color,
-                    highlightthickness=0
+                    highlightthickness=0,
+                    disabledforeground=self.text_color,
+                    command=lambda r=row, c=col: self.left_click(r, c)
                 )
                 btn.bind("<Button-3>", lambda event, r=row, c=col: self.right_click(r, c))
                 btn.grid(row=row, column=col, padx=1, pady=1, sticky="nsew")
                 row_buttons.append(btn)
-                row_board.append(0)
             self.buttons.append(row_buttons)
-            self.board.append(row_board)
 
         for row in range(self.size):
             self.game_frame.rowconfigure(row, weight=1)
             self.game_frame.columnconfigure(row, weight=1)
 
     def set_board_state(self, state):
-        """Встановлює стан всіх кнопок на ігровому полі (active/disabled)."""
+        """Встановлює стан всіх кнопок"""
         for row_buttons in self.buttons:
             for btn in row_buttons:
-                btn.config(state=state)
+                current_text = btn.cget("text")
+                # Зберігаємо колір мін у режимі налагодження
+                if self.debug_mode and current_text == "💣":
+                    btn.config(state=state, bg="#8B4513", disabledbackground="#8B4513")
+                else:
+                    btn.config(state=state)
 
-    def place_mines(self, exclude=None):
+    def place_mines(self):
         """Розміщує міни на випадкових позиціях."""
+        # Переконуємось що дошка ініціалізована
+        if not self.board or len(self.board) != self.size:
+            self.board = [[0 for _ in range(self.size)] for _ in range(self.size)]
+        
         mines_placed = 0
         while mines_placed < self.mines:
-            row, col = random.randint(0, self.size - 1), random.randint(0, self.size - 1)
+            row = random.randint(0, self.size-1)
+            col = random.randint(0, self.size-1)
             if self.board[row][col] != 'M':
                 self.board[row][col] = 'M'
                 mines_placed += 1
 
     def update_numbers(self):
         """Оновлює числові значення на клітинках навколо мін."""
+        # Перевіряємо коректність розміру дошки
+        if len(self.board) != self.size or any(len(row) != self.size for row in self.board):
+            self.board = [[0 for _ in range(self.size)] for _ in range(self.size)]
+            self.place_mines()
+        
         for row in range(self.size):
             for col in range(self.size):
                 if self.board[row][col] != 'M':
-                    mines_count = sum(
-                        self.board[r][c] == 'M'
-                        for r in range(max(0, row - 1), min(self.size, row + 2))
-                        for c in range(max(0, col - 1), min(self.size, col + 2))
-                    )
+                    # Обчислюємо кількість мін у сусідніх клітинках з перевіркою меж
+                    mines_count = 0
+                    for r in range(max(0, row-1), min(self.size, row+2)):
+                        for c in range(max(0, col-1), min(self.size, col+2)):
+                            if self.board[r][c] == 'M':
+                                mines_count += 1
                     self.board[row][col] = mines_count
+
+                    
     def custom_dialog(self):
         """Метод класу для створення діалогового вікна."""
         dialog = tk.Toplevel(self.root)
@@ -900,11 +1021,7 @@ class Minesweeper:
     
     def left_click(self, row, col):
         """Обробляє лівий клік на клітинці."""
-        if not self.game_active:  
-            return
-        if not self.game_active:
-            self.game_active = True 
-        if self.game_over or (row, col) in self.flagged:
+        if not self.game_active or self.game_over or (row, col) in self.flagged:
             return
 
         if self.board[row][col] == 'M':
@@ -929,7 +1046,6 @@ class Minesweeper:
                     self.show_custom_dialog("Гра завершена", "Ви програли!")
                     self.game_active = False
                     self.set_board_state("disabled")
-                    #self.stop_timer()  # Додано зупинку таймера
                     return
             else:
                 # Якщо діалог вимкнений або це не перший клік – одразу програємо
@@ -941,7 +1057,6 @@ class Minesweeper:
                 self.show_custom_dialog("Гра завершена", "Ви програли!")
                 self.game_active = False
                 self.set_board_state("disabled")
-                #self.stop_timer()  # Додано зупинку таймера
                 return
 
         # Якщо це не міна, відкриваємо клітинку
@@ -949,15 +1064,8 @@ class Minesweeper:
 
         # Після першого кліку змінюємо стан
         self.first_click = False
-
-        # Перевірка на перемогу
-        if self.check_win():
-            self.game_over = True
-            self.stop_timer()
-            self.save_game("Виграв")
-            messagebox.showinfo("Гра завершена", "Ви виграли!")
-            self.game_active = False
-            self.set_board_state("disabled")
+        # Після будь-якого кліку перевіряємо перемогу
+        self.check_win()
 
     def reset_game(self):
         """Скидає гру для нового раунду."""
@@ -983,11 +1091,37 @@ class Minesweeper:
             self.buttons[row][col].config(text=str(value), bg=self.reveal_color, state="disabled")
 
     def reveal_mines(self):
-        """Відкриває всі міни на полі гри."""
+        """Відкриває всі міни та позначає невірні флажки"""
         for row in range(self.size):
             for col in range(self.size):
                 if self.board[row][col] == 'M':
-                    self.buttons[row][col].config(text="💣", bg="red", fg=self.mine_color, state="disabled")
+                    bg_color = "red" if self.mine_color_enabled else self.button_bg_color
+                    
+                    if (row, col) in self.flagged:
+                        self.buttons[row][col].config(
+                            text="🚩",
+                            fg=self.flag_color,
+                            bg=bg_color,
+                            state="disabled",
+                            disabledforeground=self.flag_color
+                        )
+                    else:
+                        self.buttons[row][col].config(
+                            text="💣" if self.mine_color_enabled else " ",
+                            fg=self.mine_color,
+                            bg=bg_color,
+                            state="disabled"
+                        )
+        
+        for row, col in self.flagged:
+            if self.board[row][col] != 'M':
+                self.buttons[row][col].config(
+                    text="❌",
+                    fg="red",
+                    bg=self.button_bg_color,
+                    state="disabled",
+                    disabledforeground="red"
+                )
 
     def right_click(self, row, col):
         """Обробляє правий клік (додавання/зняття прапорця)."""
@@ -995,21 +1129,33 @@ class Minesweeper:
             return
 
         if (row, col) in self.flagged:
-            self.buttons[row][col].config(text="")
+            self.buttons[row][col].config(text="", fg=self.text_color)
             self.flagged.remove((row, col))
         else:
-            self.buttons[row][col].config(text="🚩", fg=self.flag_color)
+            self.buttons[row][col].config(text="🚩", fg=self.flag_color, disabledforeground=self.flag_color)
             self.flagged.add((row, col))
+        
+        self.check_win()
 
     def check_win(self):
         """Перевірка на перемогу з правильним завершенням таймера"""
-        correct_flags = all(self.board[r][c] == 'M' for r, c in self.flagged)
-        all_revealed = all(self.buttons[r][c]['state'] == 'disabled' 
-                       for r in range(self.size) 
-                       for c in range(self.size) 
-                       if self.board[r][c] != 'M')
+        # Перевірка чи всі міни правильно позначені
+        correct_flags = all(
+            (r, c) in self.flagged 
+            for r in range(self.size) 
+            for c in range(self.size) 
+            if self.board[r][c] == 'M'
+        )
         
-        if correct_flags and all_revealed:
+        # Перевірка чи всі безпечні клітинки відкриті
+        safe_revealed = all(
+            self.buttons[r][c]['state'] == 'disabled' 
+            for r in range(self.size) 
+            for c in range(self.size) 
+            if self.board[r][c] != 'M'
+        )
+        
+        if correct_flags and safe_revealed:
             self.game_over = True
             self.stop_timer()
             self.save_game("Виграв")
@@ -1028,8 +1174,8 @@ class Minesweeper:
         if not self.game_over and not self.confirm_action("difficulty"):
             # Відновлюємо попередній рівень у меню
             self.difficulty_var.set(previous_difficulty)
-            # Оновлюємо випадаючий список
-            self._update_difficulty_menu(previous_difficulty)
+            # Оновлюємо випадаючий список (REMOVE THE ARGUMENT HERE)
+            self._update_difficulty_menu()  # Corrected line
             return
         
         # Оновлюємо параметри гри
@@ -1174,6 +1320,8 @@ class Minesweeper:
         main_frame = tk.Frame(self.info_window, bg=self.bg_color)
         main_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
+
+
     
         #Кнопка керування таймером    
         timer_btn_text = "Вимкнути таймер" if self.timer_enabled else "Увімкнути таймер"
@@ -1181,9 +1329,19 @@ class Minesweeper:
             main_frame,
             text=timer_btn_text,
             command=self.toggle_timer,
-            style='TButton'
+            style='TimerOff.TButton'  # Початковий стиль
         )
         self.timer_toggle_btn.pack(anchor='w', pady=(0, 10))
+
+        #Чекбокс міни
+        self.mine_color_checkbox = ttk.Checkbutton(
+            main_frame,
+            text="Підсвітка мін",
+            variable=self.mine_color_var,  # Використовуємо прив'язану змінну
+            command=self.toggle_mine_color,
+            style='TCheckbutton'
+        )
+        self.mine_color_checkbox.pack(anchor='w', pady=(0, 10))
 
         # Чекбокс
         self.dialog_checkbox = ttk.Checkbutton(
@@ -1254,6 +1412,9 @@ class Minesweeper:
 11. Слідкуйте за числами: Використовуйте числа для визначення місця розташування мін. Чим більше відкриваєте, тим більше інформації отримуєте. 
 12. Будьте обережні: Якщо ви не впевнені, що клітинка безпечна, використовуйте флажок, щоб запобігти випадковому натисканню. 
 
+Додаткові налаштування:
+13. Підсвітка мін: Увімкніть цю опцію в меню налаштувань, щоб міни відображалися червоним кольором після відкриття.
+        
 Про програму: 
 Цю гру розробив @kilo3528.
 """
